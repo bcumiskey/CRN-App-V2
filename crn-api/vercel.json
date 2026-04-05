@@ -1,0 +1,4 @@
+{
+  "installCommand": "cd .. && npm install --legacy-peer-deps",
+  "buildCommand": "cd ../crn-shared && npm run build && cd ../crn-api && npx prisma generate && npx next build"
+}
