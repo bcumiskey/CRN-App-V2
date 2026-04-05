@@ -14,7 +14,7 @@ const settingsItems: SettingsItem[] = [
   { label: "Preferences", description: "Default views, notifications, display", route: "/(admin)/settings/preferences" },
   { label: "Tab Bar", description: "Customize navigation tab layout", route: "/(admin)/settings/tab-bar" },
   { label: "Job & Invoice Numbering", description: "Prefixes and counters", route: "/(admin)/settings/numbering" },
-  { label: "Integrations", description: "Calendar sources, email settings", stubbed: true },
+  { label: "Integrations", description: "Calendar sources, email settings", route: "/(admin)/calendar-sync" },
   { label: "About", description: "App version and support", stubbed: true },
 ];
 

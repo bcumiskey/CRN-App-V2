@@ -119,6 +119,10 @@ export default function AdminLayout() {
         name="supplies"
         options={{ href: null, title: "Supplies" }}
       />
+      <Tabs.Screen
+        name="calendar-sync"
+        options={{ href: null, title: "Calendar Sync" }}
+      />
     </Tabs>
   );
 }

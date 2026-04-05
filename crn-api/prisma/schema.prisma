@@ -820,3 +820,24 @@ model CommunicationLog {
 
   @@index([entityType, entityId])
 }
+
+// ============================================================
+// UNMATCHED SYNC EVENTS (Calendar Sync — Phase 7)
+// ============================================================
+
+model UnmatchedSyncEvent {
+  id                  String   @id @default(cuid())
+  calendarSourceId    String
+  syncLogId           String
+  uid                 String
+  rawSummary          String
+  date                String
+  rawData             Json?
+  status              String   @default("pending") // pending | assigned | dismissed
+  assignedPropertyId  String?
+  assignedJobId       String?
+  createdAt           DateTime @default(now())
+
+  @@index([status])
+  @@index([calendarSourceId])
+}
