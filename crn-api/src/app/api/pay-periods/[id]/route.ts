@@ -30,7 +30,7 @@ export async function computePerWorkerEarnings(
     where: { id: "singleton" },
     select: { financialModel: true },
   });
-  const financialModel = settings?.financialModel as FinancialModel;
+  const financialModel = settings?.financialModel as unknown as FinancialModel;
 
   // Find all completed jobs in the period with assignments and charges
   const jobs = await prisma.job.findMany({

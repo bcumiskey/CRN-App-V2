@@ -156,7 +156,7 @@ export async function loadFinancialModel(
     where: { id: "singleton" },
     select: { financialModel: true },
   });
-  return settings?.financialModel as FinancialModel;
+  return settings?.financialModel as unknown as FinancialModel;
 }
 
 /**

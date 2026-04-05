@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
       where: { id: "singleton" },
       select: { financialModel: true },
     });
-    const financialModel = settings?.financialModel as FinancialModel;
+    const financialModel = settings?.financialModel as unknown as FinancialModel;
 
     // Total revenue: sum of totalFee for completed/invoiced jobs this month
     const completedJobs = await prisma.job.findMany({
