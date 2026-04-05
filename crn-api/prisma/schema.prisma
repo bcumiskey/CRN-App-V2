@@ -189,6 +189,22 @@ model Property {
   trashDay            String?
   specialInstructions String?
 
+  // Calendar sync (Phase 7)
+  aliases             String[] @default([])
+
+  // Owner operational preferences (Phase 6)
+  laundryMethod       String?  // onsite | laundromat | service | owner_handles
+  laundryLocation     String?
+  laundryNotes        String?
+  guestCommsMethod    String?  // owner_handles | crn_handles | none
+  checkInPhotos       Boolean  @default(false)
+  checkOutPhotos      Boolean  @default(false)
+  preferredTemp       String?
+  petPolicy           String?
+  earliestArrival     String?
+  latestDeparture     String?
+  keyReturnMethod     String?
+
   // Relations
   rooms               Room[]
   jobs                Job[]
@@ -197,6 +213,8 @@ model Property {
   linenRequirements   PropertyLinenRequirement[]
   propertyNotes       PropertyNote[]
   checklists          Checklist[]
+  photos              PropertyPhoto[]
+  standingInstructions StandingInstruction[]
 
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
@@ -229,6 +247,48 @@ model Room {
   stockingNotes       String?
   sortOrder           Int      @default(0)
 
+  // Photos
+  photos              PropertyPhoto[]
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+// ============================================================
+// PROPERTY PHOTOS
+// ============================================================
+
+model PropertyPhoto {
+  id                  String   @id @default(cuid())
+  propertyId          String
+  property            Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  url                 String
+  thumbnailUrl        String?
+  roomId              String?
+  room                Room?    @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  caption             String?
+  photoType           String   @default("reference") // reference | before | after | damage | setup
+  isPrimary           Boolean  @default(false)
+  sortOrder           Int      @default(0)
+  uploadedById        String?
+  createdAt           DateTime @default(now())
+}
+
+// ============================================================
+// STANDING INSTRUCTIONS
+// ============================================================
+
+model StandingInstruction {
+  id                  String   @id @default(cuid())
+  propertyId          String
+  property            Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  text                String
+  category            String   @default("general") // general | laundry | guest | owner | access | seasonal
+  priority            String   @default("normal")  // normal | important | critical
+  activeFrom          String?
+  activeUntil         String?
+  isActive            Boolean  @default(true)
+  sortOrder           Int      @default(0)
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 }
@@ -616,10 +676,33 @@ model PropertyNote {
   authorId            String
   content             String
 
-  photoUrl            String?
+  // Photos (multiple)
+  photoUrl            String?  // Legacy single photo
+  photos              PropertyNotePhoto[]
 
-  noteType            String   @default("general") // general | damage | maintenance | owner_request
+  // Type
+  noteType            String   @default("general") // general | damage | maintenance | owner_request | guest_feedback | inventory | resolved
 
+  // Resolution tracking
+  isResolved          Boolean  @default(false)
+  resolvedAt          DateTime?
+  resolvedById        String?
+  resolutionNote      String?
+  relatedNoteId       String?  // Links resolution to original note
+
+  // Job context
+  jobId               String?
+
+  createdAt           DateTime @default(now())
+}
+
+model PropertyNotePhoto {
+  id                  String   @id @default(cuid())
+  noteId              String
+  note                PropertyNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  url                 String
+  thumbnailUrl        String?
+  caption             String?
   createdAt           DateTime @default(now())
 }
 
