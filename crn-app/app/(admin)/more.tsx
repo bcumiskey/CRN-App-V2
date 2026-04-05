@@ -28,7 +28,8 @@ const menuItems: MenuItem[] = [
   { key: "mileage", label: "Mileage", icon: Wallet, route: "/(admin)/mileage" },
   { key: "pay_periods", label: "Pay Periods", icon: Wallet, route: "/(admin)/pay-periods" },
   { key: "reports", label: "Reports", icon: TrendingUp, route: "/(admin)/reports" },
-  { key: "linens", label: "Linens & Supplies", icon: Package, stubbed: true },
+  { key: "linens", label: "Linens", icon: Package, route: "/(admin)/linens" },
+  { key: "supplies", label: "Supplies", icon: Package, route: "/(admin)/supplies" },
   { key: "settings", label: "Settings", icon: Settings, route: "/(admin)/settings" },
 ];
 

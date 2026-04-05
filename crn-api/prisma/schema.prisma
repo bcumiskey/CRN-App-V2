@@ -585,6 +585,25 @@ model PropertyLinenRequirement {
 }
 
 // ============================================================
+// SUPPLIES (Consumables — cleaning products, paper goods, etc.)
+// ============================================================
+
+model Supply {
+  id                  String   @id @default(cuid())
+  name                String
+  category            String   // cleaning | paper | laundry | equipment | other
+  onHand              Int      @default(0)
+  reorderLevel        Int      @default(0)
+  reorderQuantity     Int?
+  unitCost            Float    @default(0)
+  unit                String?  // bottle | box | case | each
+  vendor              String?
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+// ============================================================
 // PROPERTY NOTES & CHECKLISTS
 // ============================================================
 

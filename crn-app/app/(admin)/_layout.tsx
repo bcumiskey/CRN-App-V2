@@ -111,6 +111,14 @@ export default function AdminLayout() {
         name="reports"
         options={{ href: null, title: "Reports" }}
       />
+      <Tabs.Screen
+        name="linens"
+        options={{ href: null, title: "Linens" }}
+      />
+      <Tabs.Screen
+        name="supplies"
+        options={{ href: null, title: "Supplies" }}
+      />
     </Tabs>
   );
 }
