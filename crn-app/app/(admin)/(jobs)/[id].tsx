@@ -10,14 +10,14 @@ import {
   useUpdateAssignment,
   useAddCharge,
   useRemoveCharge,
-} from "../../../../hooks/use-jobs";
-import { useActiveTeam } from "../../../../hooks/use-team";
-import { useSettings } from "../../../../hooks/use-settings";
-import { Card } from "../../../../components/ui/Card";
-import { Button } from "../../../../components/ui/Button";
-import { StatusBadge } from "../../../../components/ui/StatusBadge";
-import { SharePills } from "../../../../components/domain/SharePills";
-import { FinancialSummary } from "../../../../components/domain/FinancialSummary";
+} from "../../../hooks/use-jobs";
+import { useActiveTeam } from "../../../hooks/use-team";
+import { useSettings } from "../../../hooks/use-settings";
+import { Card } from "../../../components/ui/Card";
+import { Button } from "../../../components/ui/Button";
+import { StatusBadge } from "../../../components/ui/StatusBadge";
+import { SharePills } from "../../../components/domain/SharePills";
+import { FinancialSummary } from "../../../components/domain/FinancialSummary";
 
 const statusTransitions: Record<string, string[]> = {
   SCHEDULED: ["IN_PROGRESS", "CANCELLED"],

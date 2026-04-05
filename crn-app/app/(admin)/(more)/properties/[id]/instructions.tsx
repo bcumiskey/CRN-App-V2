@@ -15,10 +15,10 @@ import {
   useCreateInstruction,
   useUpdateInstruction,
   StandingInstruction,
-} from "../../../../hooks/use-property-profile";
-import { Card } from "../../../../components/ui/Card";
-import { Button } from "../../../../components/ui/Button";
-import { EmptyState } from "../../../../components/ui/EmptyState";
+} from "../../../../../hooks/use-property-profile";
+import { Card } from "../../../../../components/ui/Card";
+import { Button } from "../../../../../components/ui/Button";
+import { EmptyState } from "../../../../../components/ui/EmptyState";
 
 type Priority = "critical" | "important" | "general" | "seasonal";
 

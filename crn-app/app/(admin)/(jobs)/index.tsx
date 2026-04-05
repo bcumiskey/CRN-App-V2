@@ -1,10 +1,10 @@
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl } from "react-native";
 import { useRouter } from "expo-router";
 import { useState, useCallback } from "react";
-import { useJobs } from "../../../../hooks/use-jobs";
-import { useFilterStore } from "../../../../stores/filter-store";
-import { JobCard } from "../../../../components/domain/JobCard";
-import { EmptyState } from "../../../../components/ui/EmptyState";
+import { useJobs } from "../../../hooks/use-jobs";
+import { useFilterStore } from "../../../stores/filter-store";
+import { JobCard } from "../../../components/domain/JobCard";
+import { EmptyState } from "../../../components/ui/EmptyState";
 
 const statusOptions = ["SCHEDULED", "IN_PROGRESS", "COMPLETED", "CANCELLED"];
 

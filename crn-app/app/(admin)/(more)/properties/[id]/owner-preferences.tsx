@@ -14,9 +14,9 @@ import {
   useOwnerPreferences,
   useUpdateOwnerPreferences,
   OwnerPreferences,
-} from "../../../../hooks/use-property-profile";
-import { Card } from "../../../../components/ui/Card";
-import { Button } from "../../../../components/ui/Button";
+} from "../../../../../hooks/use-property-profile";
+import { Card } from "../../../../../components/ui/Card";
+import { Button } from "../../../../../components/ui/Button";
 
 const LAUNDRY_METHODS = ["On-site", "Laundromat", "Service", "Owner Handles"];
 const GUEST_COMMS_METHODS = ["App Message", "Text", "Email", "Phone", "None"];
