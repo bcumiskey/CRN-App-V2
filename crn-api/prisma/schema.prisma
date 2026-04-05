@@ -45,6 +45,9 @@ model CompanySettings {
   businessHoursEnd      String   @default("18:00")
   timezone              String   @default("America/New_York")
 
+  // Onboarding
+  onboardingCompleted   Boolean  @default(false)
+
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 }
@@ -87,6 +90,8 @@ model User {
   mileageLogs         MileageLog[]
   payStatements       PayStatement[]
   preferences         UserPreference?
+  pushTokens          PushToken[]
+  notifications       Notification[]
 
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
@@ -840,4 +845,38 @@ model UnmatchedSyncEvent {
 
   @@index([status])
   @@index([calendarSourceId])
+}
+
+// ============================================================
+// PUSH NOTIFICATIONS (Phase 8)
+// ============================================================
+
+model PushToken {
+  id                  String   @id @default(cuid())
+  userId              String
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token               String   @unique
+  platform            String   // ios | android | web
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model Notification {
+  id                  String   @id @default(cuid())
+  userId              String
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title               String
+  body                String
+  entityType          String?  // job | invoice | pay_period | sync
+  entityId            String?
+  isRead              Boolean  @default(false)
+  readAt              DateTime?
+  pushSent            Boolean  @default(false)
+  pushSentAt          DateTime?
+  pushError           String?
+  createdAt           DateTime @default(now())
+
+  @@index([userId, isRead])
+  @@index([createdAt])
 }

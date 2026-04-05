@@ -79,6 +79,7 @@ export default function WorkerLayout() {
       <Tabs.Screen name="pay/[periodId]" options={{ href: null, title: "Pay Period" }} />
       <Tabs.Screen name="profile" options={{ href: null, title: "Profile" }} />
       <Tabs.Screen name="settings" options={{ href: null, title: "Settings" }} />
+      <Tabs.Screen name="notifications" options={{ href: null, title: "Notifications" }} />
     </Tabs>
   );
 }

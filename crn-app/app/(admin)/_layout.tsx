@@ -1,12 +1,35 @@
 import { Tabs, useRouter } from "expo-router";
-import { View, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import {
   LayoutDashboard,
   ClipboardList,
   Plus,
   Calendar,
   Menu,
+  Bell,
 } from "lucide-react-native";
+import { useUnreadCount } from "../../hooks/use-notifications";
+
+function NotificationBell() {
+  const router = useRouter();
+  const { data } = useUnreadCount();
+  const count = data?.count ?? 0;
+
+  return (
+    <TouchableOpacity
+      onPress={() => router.push("/(admin)/notifications" as never)}
+      style={styles.bellButton}
+      activeOpacity={0.7}
+    >
+      <Bell size={22} color="#374151" />
+      {count > 0 && (
+        <View style={styles.badge}>
+          <Text style={styles.badgeText}>{count > 99 ? "99+" : count}</Text>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+}
 
 export default function AdminLayout() {
   const router = useRouter();
@@ -17,6 +40,7 @@ export default function AdminLayout() {
         headerShown: true,
         headerStyle: { backgroundColor: "#ffffff" },
         headerTitleStyle: { fontWeight: "600", color: "#111827" },
+        headerRight: () => <NotificationBell />,
         tabBarStyle: styles.tabBar,
         tabBarActiveTintColor: "#2563eb",
         tabBarInactiveTintColor: "#9ca3af",
@@ -123,11 +147,37 @@ export default function AdminLayout() {
         name="calendar-sync"
         options={{ href: null, title: "Calendar Sync" }}
       />
+      <Tabs.Screen
+        name="notifications"
+        options={{ href: null, title: "Notifications" }}
+      />
     </Tabs>
   );
 }
 
 const styles = StyleSheet.create({
+  bellButton: {
+    marginRight: 16,
+    padding: 4,
+    position: "relative",
+  },
+  badge: {
+    position: "absolute",
+    top: -2,
+    right: -4,
+    backgroundColor: "#dc2626",
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+  },
+  badgeText: {
+    color: "#ffffff",
+    fontSize: 10,
+    fontWeight: "700",
+  },
   tabBar: {
     height: 80,
     paddingBottom: 20,
