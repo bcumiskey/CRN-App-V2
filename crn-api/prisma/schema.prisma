@@ -1,0 +1,720 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// COMPANY SETTINGS (Singleton)
+// ============================================================
+
+model CompanySettings {
+  id                    String   @id @default("singleton")
+
+  // Business identity
+  businessName          String   @default("Clean Right Now")
+  ownerName             String   @default("")
+  email                 String   @default("")
+  phone                 String   @default("")
+  address               String   @default("")
+
+  // Financial model (JSON — configurable buckets + share levels)
+  // Structure: { buckets: [{ name, percent, type }], shareLevels: [{ label, value }] }
+  financialModel        Json
+
+  // Tax & compliance
+  mileageRate           Float    @default(0.70)
+  taxYear               Int      @default(2026)
+  contractor1099Threshold Float  @default(600.0)
+
+  // Pay period
+  payPeriodType         String   @default("monthly") // monthly | biweekly | weekly
+
+  // Defaults
+  defaultPaymentTerms   String   @default("Due upon receipt")
+  invoicePrefix         String   @default("INV")
+  invoiceNextNumber     Int      @default(1)
+  jobPrefix             String   @default("JOB")
+  jobNextNumber         Int      @default(1)
+
+  // Business hours
+  businessHoursStart    String   @default("08:00")
+  businessHoursEnd      String   @default("18:00")
+  timezone              String   @default("America/New_York")
+
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+// ============================================================
+// USERS & WORKERS
+// ============================================================
+
+model User {
+  id                  String   @id @default(cuid())
+  clerkId             String   @unique
+  email               String   @unique
+  name                String
+  phone               String?
+
+  role                String   @default("worker") // admin | worker
+  isOwner             Boolean  @default(false)
+
+  // Worker status lifecycle
+  status              String   @default("active") // active | lame_duck | archived
+  statusChangedAt     String?                     // YYYY-MM-DD
+  statusReason        String?
+
+  // Defaults
+  defaultShare        Float    @default(1.0)
+
+  // Profile
+  avatarUrl           String?
+  emergencyContact    String?
+  emergencyPhone      String?
+
+  // Tax & compliance
+  taxIdOnFile         Boolean  @default(false)
+  taxIdLastFour       String?
+  mailingAddress      String?
+
+  // Relations
+  assignments         JobAssignment[]
+  expenses            Expense[]
+  mileageLogs         MileageLog[]
+  payStatements       PayStatement[]
+  preferences         UserPreference?
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+// ============================================================
+// USER PREFERENCES
+// ============================================================
+
+model UserPreference {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Navigation (configurable tab bar)
+  tabBarSlots           Json     @default("[{\"position\":1,\"section\":\"dashboard\"},{\"position\":2,\"section\":\"jobs\"},{\"position\":3,\"section\":\"calendar\"}]")
+  centerAction          String   @default("quick_add_job")
+
+  // Views
+  defaultJobsView       String   @default("list")
+  defaultCalendarView   String   @default("week")
+
+  // Job completion behavior
+  jobCompletionAction   String   @default("stay")
+
+  // Dashboard
+  dashboardCards        Json?
+
+  // Notifications
+  notifyUpcomingJobs    Boolean  @default(true)
+  notifyScheduleChanges Boolean  @default(true)
+  notifyOverdueInvoices Boolean  @default(true)
+  upcomingJobLeadDays   Int      @default(7)
+
+  // Display
+  startOfWeek           String   @default("sunday")
+  timeFormat            String   @default("12h")
+
+  // Onboarding
+  dismissedTips         Json     @default("[]")
+
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+// ============================================================
+// PROPERTY OWNERS
+// ============================================================
+
+model PropertyOwner {
+  id                  String   @id @default(cuid())
+  name                String
+  email               String?
+  phone               String?
+  company             String?
+  address             String?
+
+  // Billing preferences
+  billingType         String   @default("per_job") // per_job | monthly
+  paymentTerms        String   @default("Due upon receipt")
+
+  notes               String?
+
+  // Relations
+  properties          Property[]
+  invoices            Invoice[]
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+// ============================================================
+// PROPERTIES
+// ============================================================
+
+model Property {
+  id                  String   @id @default(cuid())
+
+  // Identity
+  name                String
+  code                String   @unique
+  address             String?
+
+  // Owner relation
+  ownerId             String?
+  owner               PropertyOwner? @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+
+  // Financial defaults
+  defaultJobFee       Float?
+  houseCutPercent     Float    @default(0)
+
+  // Status
+  status              String   @default("active") // active | inactive
+
+  // Operational
+  accessInstructions  String?
+  parkingNotes        String?
+  wifiName            String?
+  wifiPassword        String?
+  trashDay            String?
+  specialInstructions String?
+
+  // Relations
+  rooms               Room[]
+  jobs                Job[]
+  calendarSources     CalendarSource[]
+  invoices            Invoice[]
+  linenRequirements   PropertyLinenRequirement[]
+  propertyNotes       PropertyNote[]
+  checklists          Checklist[]
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model Room {
+  id                  String   @id @default(cuid())
+  propertyId          String
+  property            Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  name                String
+  floor               String?
+  type                String   // bedroom | bathroom | kitchen | living | other
+
+  // Bed configuration (bedrooms only)
+  bedType             String?  // king | queen | full | twin | bunk
+  bedCount            Int      @default(1)
+  hasCrib             Boolean  @default(false)
+  hasMurphy           Boolean  @default(false)
+  hasTrundle          Boolean  @default(false)
+  hasPullout          Boolean  @default(false)
+
+  // Bathroom config
+  towelCount          Int?
+  hasRug              Boolean  @default(false)
+  hasRobes            Boolean  @default(false)
+  hasSlippers         Boolean  @default(false)
+
+  // Stocking notes
+  stockingNotes       String?
+  sortOrder           Int      @default(0)
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+// ============================================================
+// JOBS & ASSIGNMENTS
+// ============================================================
+
+model Job {
+  id                  String   @id @default(cuid())
+  jobNumber           String   @unique
+
+  // What & where
+  propertyId          String
+  property            Property @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+
+  // When (string dates — Rule #2)
+  scheduledDate       String   // YYYY-MM-DD
+  scheduledTime       String?  // HH:MM (24hr)
+
+  // Type
+  jobType             String   @default("STANDARD") // STANDARD | DEEP | TURNOVER | INSPECTION | LAUNDRY | OTHER
+  jobTypeLabel        String?
+
+  // Financial inputs
+  totalFee            Float
+  houseCutPercent     Float
+
+  // Status lifecycle
+  status              String   @default("SCHEDULED") // SCHEDULED | IN_PROGRESS | COMPLETED | INVOICED | CANCELLED
+  completedDate       String?
+
+  // Payment tracking
+  clientPaid          Boolean  @default(false)
+  clientPaidDate      String?
+  clientPaidMethod    String?  // check | venmo | zelle | ach | cash | other
+  teamPaid            Boolean  @default(false)
+  teamPaidDate        String?
+
+  // Source tracking (Rule #3)
+  source              String   @default("manual") // manual | turno | google
+  externalId          String?
+  rawSummary          String?
+  syncLocked          Boolean  @default(false)
+
+  // Priority
+  isBtoB              Boolean  @default(false)
+
+  notes               String?
+
+  // Relations
+  assignments         JobAssignment[]
+  charges             JobCharge[]
+  invoiceLineItems    InvoiceLineItem[]
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([scheduledDate])
+  @@index([status])
+  @@index([propertyId, scheduledDate])
+}
+
+model JobAssignment {
+  id                  String   @id @default(cuid())
+  jobId               String
+  job                 Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  userId              String
+  user                User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  share               Float    @default(1.0)
+
+  createdAt           DateTime @default(now())
+
+  @@unique([jobId, userId])
+}
+
+model JobCharge {
+  id                  String   @id @default(cuid())
+  jobId               String
+  job                 Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  amount              Float
+  reason              String   // Max 120 chars enforced in validation
+
+  createdAt           DateTime @default(now())
+}
+
+// ============================================================
+// CALENDAR SYNC
+// ============================================================
+
+model CalendarSource {
+  id                  String   @id @default(cuid())
+  propertyId          String?
+  property            Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+
+  name                String
+  type                String   // turno_ical | google_ical | manual
+  url                 String?
+
+  // Sync state
+  isActive            Boolean  @default(true)
+  lastSyncAt          DateTime?
+  lastSyncStatus      String?  // success | error | partial
+  lastSyncError       String?
+  syncIntervalMinutes Int      @default(30)
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+// ============================================================
+// INVOICING
+// ============================================================
+
+model Invoice {
+  id                  String   @id @default(cuid())
+  invoiceNumber       String   @unique
+
+  // Who it's for
+  ownerId             String
+  owner               PropertyOwner @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  propertyId          String?
+  property            Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+
+  // Type & period
+  type                String   // per_job | monthly | custom
+  billingPeriod       String?
+
+  // Dates (strings — Rule #2)
+  invoiceDate         String
+  dueDate             String?
+  paymentTerms        String   @default("Due upon receipt")
+
+  // Totals
+  subtotal            Float    @default(0)
+  discount            Float    @default(0)
+  total               Float    @default(0)
+
+  // Status
+  status              String   @default("draft") // draft | sent | viewed | paid | overdue | void
+  sentAt              DateTime?
+  viewedAt            DateTime?
+  paidAt              DateTime?
+  paidDate            String?
+
+  // Content
+  notes               String?
+  internalNotes       String?
+
+  // Generated output
+  pdfUrl              String?
+
+  // Relations
+  lineItems           InvoiceLineItem[]
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([status])
+  @@index([ownerId])
+}
+
+model InvoiceLineItem {
+  id                  String   @id @default(cuid())
+  invoiceId           String
+  invoice             Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  // Optional link to source job
+  jobId               String?
+  job                 Job?     @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  // Line item content
+  date                String?
+  description         String
+  amount              Float
+
+  // Categorization
+  category            String?  // cleaning | deep_clean | extra_charge | supply | custom
+
+  sortOrder           Int      @default(0)
+
+  createdAt           DateTime @default(now())
+}
+
+// ============================================================
+// ACCOUNTING & EXPENSES
+// ============================================================
+
+model ExpenseCategory {
+  id                  String   @id @default(cuid())
+  name                String
+  code                String   @unique
+
+  // Hierarchy
+  parentId            String?
+  parent              ExpenseCategory?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children            ExpenseCategory[] @relation("CategoryTree")
+
+  // Tax mapping
+  scheduleCLine       String?
+
+  isSystem            Boolean  @default(false)
+  isActive            Boolean  @default(true)
+  sortOrder           Int      @default(0)
+
+  // Relations
+  expenses            Expense[]
+
+  createdAt           DateTime @default(now())
+}
+
+model Expense {
+  id                  String   @id @default(cuid())
+
+  categoryId          String
+  category            ExpenseCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  amount              Float
+  date                String   // YYYY-MM-DD
+  vendor              String?
+  description         String?
+
+  // Receipt
+  receiptUrl          String?
+
+  // Who logged it
+  loggedById          String?
+  loggedBy            User?    @relation(fields: [loggedById], references: [id], onDelete: SetNull)
+
+  // Tax
+  isDeductible        Boolean  @default(true)
+  taxYear             Int?
+
+  // Reconciliation
+  isReconciled        Boolean  @default(false)
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([date])
+  @@index([categoryId])
+}
+
+model MileageLog {
+  id                  String   @id @default(cuid())
+
+  userId              String
+  user                User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  date                String   // YYYY-MM-DD
+  startLocation       String?
+  endLocation         String?
+  miles               Float
+  purpose             String?
+
+  // Rate snapshot
+  ratePerMile         Float
+  deductionAmount     Float
+
+  // Optional link to job
+  jobId               String?
+
+  createdAt           DateTime @default(now())
+
+  @@index([date])
+  @@index([userId])
+}
+
+// ============================================================
+// PAY PERIODS & STATEMENTS
+// ============================================================
+
+model PayPeriod {
+  id                  String   @id @default(cuid())
+
+  startDate           String   // YYYY-MM-DD
+  endDate             String   // YYYY-MM-DD
+
+  status              String   @default("open") // open | closed | paid
+  closedAt            DateTime?
+  paidAt              DateTime?
+
+  // Relations
+  payStatements       PayStatement[]
+
+  createdAt           DateTime @default(now())
+}
+
+model PayStatement {
+  id                  String   @id @default(cuid())
+
+  payPeriodId         String
+  payPeriod           PayPeriod @relation(fields: [payPeriodId], references: [id], onDelete: Restrict)
+
+  userId              String
+  user                User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  // Summary
+  jobsWorked          Int
+  totalShares         Float
+  workerPoolPay       Float
+  ownerPay            Float    @default(0)
+  grossPay            Float
+
+  // Output
+  pdfUrl              String?
+  sentAt              DateTime?
+
+  createdAt           DateTime @default(now())
+
+  @@unique([payPeriodId, userId])
+}
+
+// ============================================================
+// LINENS & SUPPLIES
+// ============================================================
+
+model LinenItem {
+  id                  String   @id @default(cuid())
+
+  name                String
+  code                String   @unique
+  category            String   // sheets | towels | bedding | pillows | bath | kitchen
+
+  unitCost            Float    @default(0)
+  vendor              String?
+  vendorSku           String?
+
+  onHand              Int      @default(0)
+  isActive            Boolean  @default(true)
+
+  // Relations
+  propertyRequirements PropertyLinenRequirement[]
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model PropertyLinenRequirement {
+  id                  String   @id @default(cuid())
+
+  propertyId          String
+  property            Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  linenItemId         String
+  linenItem           LinenItem @relation(fields: [linenItemId], references: [id], onDelete: Cascade)
+
+  quantityPerFlip     Int
+
+  @@unique([propertyId, linenItemId])
+}
+
+// ============================================================
+// PROPERTY NOTES & CHECKLISTS
+// ============================================================
+
+model PropertyNote {
+  id                  String   @id @default(cuid())
+
+  propertyId          String
+  property            Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  authorId            String
+  content             String
+
+  photoUrl            String?
+
+  noteType            String   @default("general") // general | damage | maintenance | owner_request
+
+  createdAt           DateTime @default(now())
+}
+
+model Checklist {
+  id                  String   @id @default(cuid())
+
+  propertyId          String
+  property            Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  name                String
+  jobType             String?
+
+  items               ChecklistItem[]
+
+  isActive            Boolean  @default(true)
+  sortOrder           Int      @default(0)
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model ChecklistItem {
+  id                  String   @id @default(cuid())
+
+  checklistId         String
+  checklist           Checklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+
+  text                String
+  room                String?
+  sortOrder           Int      @default(0)
+  isRequired          Boolean  @default(true)
+}
+
+// ============================================================
+// BILLING ITEM PRESETS
+// ============================================================
+
+model BillingItemPreset {
+  id                  String   @id @default(cuid())
+  name                String
+  category            String   @default("custom") // service | supply | expense | custom
+  defaultAmount       Float?
+  isActive            Boolean  @default(true)
+  sortOrder           Int      @default(0)
+  createdAt           DateTime @default(now())
+}
+
+// ============================================================
+// AUDIT & SYNC LOGS
+// ============================================================
+
+model AuditLog {
+  id                  String   @id @default(cuid())
+
+  userId              String?
+  action              String   // create | update | delete | send | close | archive
+  entityType          String   // job | invoice | user | property | settings | pay_period
+  entityId            String
+
+  summary             String
+  details             Json?
+
+  ipAddress           String?
+  userAgent           String?
+
+  createdAt           DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model SyncLog {
+  id                  String   @id @default(cuid())
+
+  calendarSourceId    String
+
+  status              String   // success | error | partial
+  eventsProcessed     Int      @default(0)
+  eventsCreated       Int      @default(0)
+  eventsUpdated       Int      @default(0)
+  eventsSkipped       Int      @default(0)
+  errors              Json?
+
+  startedAt           DateTime
+  completedAt         DateTime?
+  durationMs          Int?
+
+  createdAt           DateTime @default(now())
+
+  @@index([calendarSourceId])
+  @@index([createdAt])
+}
+
+// ============================================================
+// COMMUNICATION LOG
+// ============================================================
+
+model CommunicationLog {
+  id                  String   @id @default(cuid())
+
+  type                String   // invoice_email | paystub_email | notification | reminder
+  recipientEmail      String?
+  recipientUserId     String?
+
+  subject             String?
+
+  entityType          String?  // invoice | pay_statement
+  entityId            String?
+
+  status              String   @default("sent") // sent | delivered | failed | bounced
+  errorMessage        String?
+
+  sentAt              DateTime @default(now())
+
+  @@index([entityType, entityId])
+}

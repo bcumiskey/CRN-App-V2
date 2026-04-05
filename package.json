@@ -1,0 +1,10 @@
+{
+  "name": "crn-v2",
+  "version": "0.0.0",
+  "private": true,
+  "workspaces": [
+    "crn-shared",
+    "crn-api",
+    "crn-app"
+  ]
+}

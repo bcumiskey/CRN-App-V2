@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "Clean Right Now",
+    "slug": "crn-app",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "crn",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": {
+      "bundleIdentifier": "com.cleanrightnow.app",
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.cleanrightnow.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#ffffff"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router"
+    ]
+  }
+}
