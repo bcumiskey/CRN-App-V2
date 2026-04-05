@@ -1,6 +1,5 @@
 {
-  "buildCommand": "npm run build -w crn-shared && npm run build -w crn-api",
+  "buildCommand": "cd crn-shared && npm run build && cd ../crn-api && npx prisma generate && npx next build",
   "outputDirectory": "crn-api/.next",
-  "installCommand": "npm install --legacy-peer-deps",
-  "framework": "nextjs"
+  "installCommand": "npm install --legacy-peer-deps"
 }
