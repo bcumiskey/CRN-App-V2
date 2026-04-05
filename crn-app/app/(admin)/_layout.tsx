@@ -1,46 +1,18 @@
-import { Tabs, useRouter } from "expo-router";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { Tabs } from "expo-router";
+import { View, StyleSheet } from "react-native";
 import {
   LayoutDashboard,
   ClipboardList,
   Plus,
   Calendar,
   Menu,
-  Bell,
 } from "lucide-react-native";
-import { useUnreadCount } from "../../hooks/use-notifications";
-
-function NotificationBell() {
-  const router = useRouter();
-  const { data } = useUnreadCount();
-  const count = data?.count ?? 0;
-
-  return (
-    <TouchableOpacity
-      onPress={() => router.push("/(admin)/notifications" as never)}
-      style={styles.bellButton}
-      activeOpacity={0.7}
-    >
-      <Bell size={22} color="#374151" />
-      {count > 0 && (
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>{count > 99 ? "99+" : count}</Text>
-        </View>
-      )}
-    </TouchableOpacity>
-  );
-}
 
 export default function AdminLayout() {
-  const router = useRouter();
-
   return (
     <Tabs
       screenOptions={{
-        headerShown: true,
-        headerStyle: { backgroundColor: "#ffffff" },
-        headerTitleStyle: { fontWeight: "600", color: "#111827" },
-        headerRight: () => <NotificationBell />,
+        headerShown: false,
         tabBarStyle: styles.tabBar,
         tabBarActiveTintColor: "#2563eb",
         tabBarInactiveTintColor: "#9ca3af",
@@ -48,7 +20,7 @@ export default function AdminLayout() {
       }}
     >
       <Tabs.Screen
-        name="index"
+        name="(dashboard)"
         options={{
           title: "Dashboard",
           tabBarIcon: ({ color, size }) => (
@@ -57,7 +29,7 @@ export default function AdminLayout() {
         }}
       />
       <Tabs.Screen
-        name="jobs"
+        name="(jobs)"
         options={{
           title: "Jobs",
           tabBarIcon: ({ color, size }) => (
@@ -66,25 +38,21 @@ export default function AdminLayout() {
         }}
       />
       <Tabs.Screen
-        name="quick-add"
+        name="(quick-add)"
         options={{
           title: "",
           tabBarIcon: () => (
             <View style={styles.fabContainer}>
-              <TouchableOpacity
-                style={styles.fab}
-                onPress={() => router.push("/(admin)/quick-add")}
-                activeOpacity={0.8}
-              >
+              <View style={styles.fab}>
                 <Plus size={28} color="#ffffff" />
-              </TouchableOpacity>
+              </View>
             </View>
           ),
           tabBarLabel: () => null,
         }}
       />
       <Tabs.Screen
-        name="calendar"
+        name="(calendar)"
         options={{
           title: "Calendar",
           tabBarIcon: ({ color, size }) => (
@@ -93,7 +61,7 @@ export default function AdminLayout() {
         }}
       />
       <Tabs.Screen
-        name="more"
+        name="(more)"
         options={{
           title: "More",
           tabBarIcon: ({ color, size }) => (
@@ -101,83 +69,11 @@ export default function AdminLayout() {
           ),
         }}
       />
-
-      {/* Hidden screens — accessible via navigation but not in tab bar */}
-      <Tabs.Screen
-        name="properties"
-        options={{ href: null, title: "Properties" }}
-      />
-      <Tabs.Screen
-        name="team"
-        options={{ href: null, title: "Team" }}
-      />
-      <Tabs.Screen
-        name="settings"
-        options={{ href: null, title: "Settings" }}
-      />
-      <Tabs.Screen
-        name="invoices"
-        options={{ href: null, title: "Invoices" }}
-      />
-      <Tabs.Screen
-        name="expenses"
-        options={{ href: null, title: "Expenses" }}
-      />
-      <Tabs.Screen
-        name="mileage"
-        options={{ href: null, title: "Mileage" }}
-      />
-      <Tabs.Screen
-        name="pay-periods"
-        options={{ href: null, title: "Pay Periods" }}
-      />
-      <Tabs.Screen
-        name="reports"
-        options={{ href: null, title: "Reports" }}
-      />
-      <Tabs.Screen
-        name="linens"
-        options={{ href: null, title: "Linens" }}
-      />
-      <Tabs.Screen
-        name="supplies"
-        options={{ href: null, title: "Supplies" }}
-      />
-      <Tabs.Screen
-        name="calendar-sync"
-        options={{ href: null, title: "Calendar Sync" }}
-      />
-      <Tabs.Screen
-        name="notifications"
-        options={{ href: null, title: "Notifications" }}
-      />
     </Tabs>
   );
 }
 
 const styles = StyleSheet.create({
-  bellButton: {
-    marginRight: 16,
-    padding: 4,
-    position: "relative",
-  },
-  badge: {
-    position: "absolute",
-    top: -2,
-    right: -4,
-    backgroundColor: "#dc2626",
-    borderRadius: 10,
-    minWidth: 18,
-    height: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 4,
-  },
-  badgeText: {
-    color: "#ffffff",
-    fontSize: 10,
-    fontWeight: "700",
-  },
   tabBar: {
     height: 80,
     paddingBottom: 20,
