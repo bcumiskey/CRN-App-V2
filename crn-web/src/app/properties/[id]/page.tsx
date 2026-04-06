@@ -17,6 +17,10 @@ import {
   FileText,
   Clock,
 } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/Card";
+import { StatusBadge } from "@/components/ui/Badge";
+import Badge from "@/components/ui/Badge";
+import { formatCurrency, formatDate } from "@/lib/utils";
 
 interface Room {
   id: string;
@@ -68,13 +72,6 @@ interface Property {
   rooms: Room[];
   recentJobs?: RecentJob[];
 }
-
-const statusColor: Record<string, string> = {
-  SCHEDULED: "bg-blue-100 text-blue-700",
-  IN_PROGRESS: "bg-yellow-100 text-yellow-700",
-  COMPLETED: "bg-green-100 text-green-700",
-  CANCELLED: "bg-red-100 text-red-700",
-};
 
 const priorityColor: Record<string, string> = {
   high: "bg-red-100 text-red-700 border-red-200",
@@ -143,15 +140,7 @@ export default function PropertyDetailPage() {
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold text-gray-900">{property.name}</h1>
             <span className="text-sm font-mono text-gray-400">{property.code}</span>
-            <span
-              className={`text-xs font-medium px-2.5 py-1 rounded-full ${
-                property.status === "active"
-                  ? "bg-green-100 text-green-700"
-                  : "bg-gray-100 text-gray-500"
-              }`}
-            >
-              {property.status}
-            </span>
+            <StatusBadge status={property.status} />
           </div>
           {property.address && (
             <p className="text-sm text-gray-500 mt-1 flex items-center gap-1">
@@ -166,183 +155,193 @@ export default function PropertyDetailPage() {
         {/* Left Column */}
         <div className="lg:col-span-2 space-y-6">
           {/* Quick Info */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Info</h2>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="flex items-center gap-3">
-                <DollarSign size={18} className="text-gray-400" />
+          <Card>
+            <CardContent>
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Info</h2>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="flex items-center gap-3">
+                  <DollarSign size={18} className="text-gray-400" />
+                  <div>
+                    <p className="text-sm text-gray-500">Default Fee</p>
+                    <p className="text-lg font-semibold text-gray-900">{formatCurrency(property.defaultFee)}</p>
+                  </div>
+                </div>
                 <div>
-                  <p className="text-sm text-gray-500">Default Fee</p>
-                  <p className="text-lg font-semibold text-gray-900">${property.defaultFee}</p>
+                  <p className="text-sm text-gray-500">House Cut</p>
+                  <p className="text-lg font-semibold text-gray-900">{property.defaultHouseCutPercent}%</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Owner</p>
+                  <p className="text-sm font-medium text-gray-900">{property.ownerName || "-"}</p>
+                  {property.ownerPhone && <p className="text-xs text-gray-400">{property.ownerPhone}</p>}
                 </div>
               </div>
-              <div>
-                <p className="text-sm text-gray-500">House Cut</p>
-                <p className="text-lg font-semibold text-gray-900">{property.defaultHouseCutPercent}%</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">Owner</p>
-                <p className="text-sm font-medium text-gray-900">{property.ownerName || "-"}</p>
-                {property.ownerPhone && <p className="text-xs text-gray-400">{property.ownerPhone}</p>}
-              </div>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
 
           {/* Access & Info */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Access & Info</h2>
-            <div className="grid grid-cols-2 gap-4">
-              {property.lockboxCode && (
-                <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
-                  <Key size={16} className="text-gray-400 mt-0.5" />
-                  <div>
-                    <p className="text-xs text-gray-500">Lockbox Code</p>
-                    <p className="text-sm font-mono font-medium text-gray-900">{property.lockboxCode}</p>
+          <Card>
+            <CardContent>
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Access & Info</h2>
+              <div className="grid grid-cols-2 gap-4">
+                {property.lockboxCode && (
+                  <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                    <Key size={16} className="text-gray-400 mt-0.5" />
+                    <div>
+                      <p className="text-xs text-gray-500">Lockbox Code</p>
+                      <p className="text-sm font-mono font-medium text-gray-900">{property.lockboxCode}</p>
+                    </div>
                   </div>
-                </div>
-              )}
-              {(property.wifiName || property.wifiPassword) && (
-                <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
-                  <Wifi size={16} className="text-gray-400 mt-0.5" />
-                  <div>
-                    <p className="text-xs text-gray-500">WiFi</p>
-                    {property.wifiName && <p className="text-sm font-medium text-gray-900">{property.wifiName}</p>}
-                    {property.wifiPassword && <p className="text-xs text-gray-400 font-mono">{property.wifiPassword}</p>}
+                )}
+                {(property.wifiName || property.wifiPassword) && (
+                  <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                    <Wifi size={16} className="text-gray-400 mt-0.5" />
+                    <div>
+                      <p className="text-xs text-gray-500">WiFi</p>
+                      {property.wifiName && <p className="text-sm font-medium text-gray-900">{property.wifiName}</p>}
+                      {property.wifiPassword && <p className="text-xs text-gray-400 font-mono">{property.wifiPassword}</p>}
+                    </div>
                   </div>
-                </div>
-              )}
-              {property.parkingInstructions && (
-                <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
-                  <Car size={16} className="text-gray-400 mt-0.5" />
-                  <div>
-                    <p className="text-xs text-gray-500">Parking</p>
-                    <p className="text-sm text-gray-700">{property.parkingInstructions}</p>
+                )}
+                {property.parkingInstructions && (
+                  <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                    <Car size={16} className="text-gray-400 mt-0.5" />
+                    <div>
+                      <p className="text-xs text-gray-500">Parking</p>
+                      <p className="text-sm text-gray-700">{property.parkingInstructions}</p>
+                    </div>
                   </div>
-                </div>
-              )}
-              {property.trashDay && (
-                <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
-                  <Trash2 size={16} className="text-gray-400 mt-0.5" />
-                  <div>
-                    <p className="text-xs text-gray-500">Trash Day</p>
-                    <p className="text-sm text-gray-700">{property.trashDay}</p>
+                )}
+                {property.trashDay && (
+                  <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                    <Trash2 size={16} className="text-gray-400 mt-0.5" />
+                    <div>
+                      <p className="text-xs text-gray-500">Trash Day</p>
+                      <p className="text-sm text-gray-700">{property.trashDay}</p>
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
-            {property.specialInstructions && (
-              <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                <div className="flex items-center gap-2 mb-1">
-                  <AlertTriangle size={14} className="text-yellow-600" />
-                  <p className="text-xs font-medium text-yellow-700 uppercase">Special Instructions</p>
-                </div>
-                <p className="text-sm text-yellow-800">{property.specialInstructions}</p>
+                )}
               </div>
-            )}
-          </div>
+              {property.specialInstructions && (
+                <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <div className="flex items-center gap-2 mb-1">
+                    <AlertTriangle size={14} className="text-yellow-600" />
+                    <p className="text-xs font-medium text-yellow-700 uppercase">Special Instructions</p>
+                  </div>
+                  <p className="text-sm text-yellow-800">{property.specialInstructions}</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Rooms */}
           {property.rooms && property.rooms.length > 0 && (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                <BedDouble size={18} className="text-gray-400" />
-                Rooms ({property.rooms.length})
-              </h2>
-              <div className="space-y-3">
-                {property.rooms.map((room) => (
-                  <div key={room.id} className="p-3 bg-gray-50 rounded-lg">
-                    <p className="text-sm font-medium text-gray-900">{room.name}</p>
-                    {room.bedConfig && <p className="text-xs text-gray-500 mt-0.5">Beds: {room.bedConfig}</p>}
-                    {room.stockingNotes && <p className="text-xs text-gray-400 mt-0.5">{room.stockingNotes}</p>}
-                  </div>
-                ))}
-              </div>
-            </div>
+            <Card>
+              <CardContent>
+                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                  <BedDouble size={18} className="text-gray-400" />
+                  Rooms ({property.rooms.length})
+                </h2>
+                <div className="space-y-3">
+                  {property.rooms.map((room) => (
+                    <div key={room.id} className="p-3 bg-gray-50 rounded-lg">
+                      <p className="text-sm font-medium text-gray-900">{room.name}</p>
+                      {room.bedConfig && <p className="text-xs text-gray-500 mt-0.5">Beds: {room.bedConfig}</p>}
+                      {room.stockingNotes && <p className="text-xs text-gray-400 mt-0.5">{room.stockingNotes}</p>}
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
           )}
 
           {/* Standing Instructions */}
           {instructions.length > 0 && (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Standing Instructions</h2>
-              <div className="space-y-4">
-                {(["high", "medium", "low"] as const).map(
-                  (priority) =>
-                    groupedInstructions[priority] && (
-                      <div key={priority}>
-                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">{priority} Priority</p>
-                        <div className="space-y-2">
-                          {groupedInstructions[priority].map((instr) => (
-                            <div
-                              key={instr.id}
-                              className={`text-sm p-3 rounded-lg border ${priorityColor[priority]}`}
-                            >
-                              {instr.text}
-                            </div>
-                          ))}
+            <Card>
+              <CardContent>
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">Standing Instructions</h2>
+                <div className="space-y-4">
+                  {(["high", "medium", "low"] as const).map(
+                    (priority) =>
+                      groupedInstructions[priority] && (
+                        <div key={priority}>
+                          <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">{priority} Priority</p>
+                          <div className="space-y-2">
+                            {groupedInstructions[priority].map((instr) => (
+                              <div
+                                key={instr.id}
+                                className={`text-sm p-3 rounded-lg border ${priorityColor[priority]}`}
+                              >
+                                {instr.text}
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    )
-                )}
-              </div>
-            </div>
+                      )
+                  )}
+                </div>
+              </CardContent>
+            </Card>
           )}
         </div>
 
         {/* Right Column */}
         <div className="space-y-6">
           {/* Recent Jobs */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <Clock size={18} className="text-gray-400" />
-              Recent Jobs
-            </h2>
-            {!property.recentJobs || property.recentJobs.length === 0 ? (
-              <p className="text-sm text-gray-400">No recent jobs</p>
-            ) : (
-              <div className="space-y-2">
-                {property.recentJobs.map((job) => (
-                  <Link
-                    key={job.id}
-                    href={`/jobs/${job.id}`}
-                    className="flex items-center justify-between p-2.5 rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">{job.jobNumber}</p>
-                      <p className="text-xs text-gray-400">{job.scheduledDate} - {job.jobType}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-medium text-gray-900">${job.totalFee}</p>
-                      <span className={`text-xs px-1.5 py-0.5 rounded-full ${statusColor[job.status] ?? "bg-gray-100 text-gray-600"}`}>
-                        {job.status.replace("_", " ")}
-                      </span>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </div>
+          <Card>
+            <CardContent>
+              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <Clock size={18} className="text-gray-400" />
+                Recent Jobs
+              </h2>
+              {!property.recentJobs || property.recentJobs.length === 0 ? (
+                <p className="text-sm text-gray-400">No recent jobs</p>
+              ) : (
+                <div className="space-y-2">
+                  {property.recentJobs.map((job) => (
+                    <Link
+                      key={job.id}
+                      href={`/jobs/${job.id}`}
+                      className="flex items-center justify-between p-2.5 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">{job.jobNumber}</p>
+                        <p className="text-xs text-gray-400">{formatDate(job.scheduledDate)} - {job.jobType}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-medium text-gray-900">{formatCurrency(job.totalFee)}</p>
+                        <StatusBadge status={job.status} />
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Notes Timeline */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <FileText size={18} className="text-gray-400" />
-              Notes
-            </h2>
-            {notes.length === 0 ? (
-              <p className="text-sm text-gray-400">No notes yet</p>
-            ) : (
-              <div className="space-y-3">
-                {notes.map((note) => (
-                  <div key={note.id} className="border-l-2 border-gray-200 pl-3">
-                    <p className="text-sm text-gray-700">{note.text}</p>
-                    <p className="text-xs text-gray-400 mt-1">
-                      {note.createdBy} - {new Date(note.createdAt).toLocaleDateString()}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <Card>
+            <CardContent>
+              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <FileText size={18} className="text-gray-400" />
+                Notes
+              </h2>
+              {notes.length === 0 ? (
+                <p className="text-sm text-gray-400">No notes yet</p>
+              ) : (
+                <div className="space-y-3">
+                  {notes.map((note) => (
+                    <div key={note.id} className="border-l-2 border-gray-200 pl-3">
+                      <p className="text-sm text-gray-700">{note.text}</p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        {note.createdBy} - {new Date(note.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>

@@ -4,6 +4,11 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import { FileText } from "lucide-react";
+import { Card } from "@/components/ui/Card";
+import { StatusBadge } from "@/components/ui/Badge";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { formatCurrency, formatDate } from "@/lib/utils";
 
 interface Invoice {
   id: string;
@@ -16,14 +21,6 @@ interface Invoice {
   status: string;
   totalAmount: number;
 }
-
-const statusColor: Record<string, string> = {
-  DRAFT: "bg-gray-100 text-gray-600",
-  SENT: "bg-blue-100 text-blue-700",
-  PAID: "bg-green-100 text-green-700",
-  OVERDUE: "bg-red-100 text-red-700",
-  VOID: "bg-gray-100 text-gray-400 line-through",
-};
 
 const tabs = [
   { label: "All", value: "" },
@@ -51,12 +48,7 @@ export default function InvoicesPage() {
 
   return (
     <div className="p-6 max-w-6xl">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Invoices</h1>
-          <p className="text-sm text-gray-500 mt-1">Manage billing and invoices</p>
-        </div>
-      </div>
+      <PageHeader title="Invoices" subtitle="Manage billing and invoices" />
 
       {/* Filter Tabs */}
       <div className="flex gap-1 mb-6 bg-gray-100 rounded-lg p-1 w-fit">
@@ -76,13 +68,15 @@ export default function InvoicesPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+      <Card>
         {loading ? (
           <div className="p-8 text-center text-gray-400 text-sm">Loading...</div>
         ) : invoices.length === 0 ? (
-          <div className="p-12 text-center">
-            <FileText size={40} className="mx-auto text-gray-300 mb-3" />
-            <p className="text-gray-500 font-medium">No invoices found</p>
+          <div className="p-6">
+            <EmptyState
+              icon={<FileText size={40} />}
+              title="No invoices found"
+            />
           </div>
         ) : (
           <table className="w-full">
@@ -105,22 +99,20 @@ export default function InvoicesPage() {
                   className="hover:bg-gray-50 cursor-pointer transition-colors"
                 >
                   <td className="px-6 py-4 text-sm font-medium text-gray-900">{inv.invoiceNumber}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{inv.date}</td>
+                  <td className="px-6 py-4 text-sm text-gray-600">{formatDate(inv.date)}</td>
                   <td className="px-6 py-4 text-sm text-gray-600">{inv.ownerName}</td>
                   <td className="px-6 py-4 text-sm text-gray-600">{inv.propertyName}</td>
                   <td className="px-6 py-4 text-sm text-gray-600">{inv.type}</td>
                   <td className="px-6 py-4">
-                    <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${statusColor[inv.status] ?? "bg-gray-100 text-gray-600"}`}>
-                      {inv.status}
-                    </span>
+                    <StatusBadge status={inv.status} />
                   </td>
-                  <td className="px-6 py-4 text-sm font-semibold text-gray-900 text-right">${inv.totalAmount.toFixed(2)}</td>
+                  <td className="px-6 py-4 text-sm font-semibold text-gray-900 text-right">{formatCurrency(inv.totalAmount)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
-      </div>
+      </Card>
     </div>
   );
 }

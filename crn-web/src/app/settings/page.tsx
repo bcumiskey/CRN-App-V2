@@ -4,6 +4,10 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { Save, AlertCircle } from "lucide-react";
 import type { FinancialModelConfig, FinancialBucket } from "crn-shared";
+import { Card, CardContent } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 interface Settings {
   businessName: string;
@@ -98,186 +102,168 @@ export default function SettingsPage() {
 
   return (
     <div className="p-6 max-w-4xl">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-          <p className="text-sm text-gray-500 mt-1">Business configuration</p>
-        </div>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
-        >
-          <Save size={14} />
-          {saving ? "Saving..." : saved ? "Saved!" : "Save Changes"}
-        </button>
-      </div>
+      <PageHeader
+        title="Settings"
+        subtitle="Business configuration"
+        actions={
+          <Button
+            onClick={handleSave}
+            disabled={saving}
+            variant="primary"
+            loading={saving}
+          >
+            <Save size={14} />
+            {saved ? "Saved!" : "Save Changes"}
+          </Button>
+        }
+      />
 
       <div className="space-y-6">
         {/* Business Info */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Business Information</h2>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Business Name</label>
-              <input
+        <Card>
+          <CardContent>
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Business Information</h2>
+            <div className="grid grid-cols-2 gap-4">
+              <Input
+                label="Business Name"
                 type="text"
                 value={settings.businessName}
                 onChange={(e) => setSettings({ ...settings, businessName: e.target.value })}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-              <input
+              <Input
+                label="Phone"
                 type="text"
                 value={settings.businessPhone ?? ""}
                 onChange={(e) => setSettings({ ...settings, businessPhone: e.target.value })}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-              <input
+              <Input
+                label="Email"
                 type="email"
                 value={settings.businessEmail ?? ""}
                 onChange={(e) => setSettings({ ...settings, businessEmail: e.target.value })}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
-              <input
+              <Input
+                label="Address"
                 type="text"
                 value={settings.businessAddress ?? ""}
                 onChange={(e) => setSettings({ ...settings, businessAddress: e.target.value })}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
               />
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
         {/* Financial Model */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">Financial Model</h2>
-            <div className="flex items-center gap-2">
-              {!bucketsValid && (
-                <span className="flex items-center gap-1 text-sm text-red-600">
-                  <AlertCircle size={14} />
-                  Must sum to 100% (currently {bucketSum.toFixed(1)}%)
-                </span>
-              )}
-              {bucketsValid && (
-                <span className="text-sm text-green-600 font-medium">100% allocated</span>
-              )}
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            {settings.financialModel.buckets.map((bucket, i) => (
-              <div key={i} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                <input
-                  type="text"
-                  value={bucket.name}
-                  onChange={(e) => updateBucket(i, "name", e.target.value)}
-                  className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                  placeholder="Bucket name"
-                />
-                <div className="w-24">
-                  <input
-                    type="number"
-                    value={bucket.percent}
-                    onChange={(e) => updateBucket(i, "percent", parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-right focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                  />
-                </div>
-                <span className="text-sm text-gray-500 w-4">%</span>
-                <select
-                  value={bucket.type}
-                  onChange={(e) => updateBucket(i, "type", e.target.value)}
-                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                >
-                  <option value="business">Business</option>
-                  <option value="owner">Owner</option>
-                  <option value="worker_pool">Worker Pool</option>
-                </select>
-                <button
-                  onClick={() => removeBucket(i)}
-                  className="text-sm text-red-500 hover:text-red-700 px-2"
-                >
-                  Remove
-                </button>
+        <Card>
+          <CardContent>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900">Financial Model</h2>
+              <div className="flex items-center gap-2">
+                {!bucketsValid && (
+                  <span className="flex items-center gap-1 text-sm text-red-600">
+                    <AlertCircle size={14} />
+                    Must sum to 100% (currently {bucketSum.toFixed(1)}%)
+                  </span>
+                )}
+                {bucketsValid && (
+                  <span className="text-sm text-green-600 font-medium">100% allocated</span>
+                )}
               </div>
-            ))}
-          </div>
+            </div>
 
-          <button
-            onClick={addBucket}
-            className="mt-3 text-sm text-blue-600 hover:text-blue-700 font-medium"
-          >
-            + Add Bucket
-          </button>
-        </div>
+            <div className="space-y-3">
+              {settings.financialModel.buckets.map((bucket, i) => (
+                <div key={i} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                  <Input
+                    type="text"
+                    value={bucket.name}
+                    onChange={(e) => updateBucket(i, "name", e.target.value)}
+                    placeholder="Bucket name"
+                    className="flex-1"
+                  />
+                  <div className="w-24">
+                    <Input
+                      type="number"
+                      value={bucket.percent}
+                      onChange={(e) => updateBucket(i, "percent", parseFloat(e.target.value) || 0)}
+                      className="text-right"
+                    />
+                  </div>
+                  <span className="text-sm text-gray-500 w-4">%</span>
+                  <select
+                    value={bucket.type}
+                    onChange={(e) => updateBucket(i, "type", e.target.value)}
+                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  >
+                    <option value="business">Business</option>
+                    <option value="owner">Owner</option>
+                    <option value="worker_pool">Worker Pool</option>
+                  </select>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => removeBucket(i)}
+                    className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                  >
+                    Remove
+                  </Button>
+                </div>
+              ))}
+            </div>
+
+            <Button variant="ghost" size="sm" onClick={addBucket} className="mt-3">
+              + Add Bucket
+            </Button>
+          </CardContent>
+        </Card>
 
         {/* Numbering */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Numbering</h2>
-          <div className="grid grid-cols-2 gap-6">
-            <div>
-              <h3 className="text-sm font-medium text-gray-700 mb-3">Job Numbers</h3>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Prefix</label>
-                  <input
+        <Card>
+          <CardContent>
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Numbering</h2>
+            <div className="grid grid-cols-2 gap-6">
+              <div>
+                <h3 className="text-sm font-medium text-gray-700 mb-3">Job Numbers</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <Input
+                    label="Prefix"
                     type="text"
                     value={settings.jobNumberPrefix}
                     onChange={(e) => setSettings({ ...settings, jobNumberPrefix: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                   />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Next Number</label>
-                  <input
+                  <Input
+                    label="Next Number"
                     type="number"
                     value={settings.jobNumberNext}
                     onChange={(e) => setSettings({ ...settings, jobNumberNext: parseInt(e.target.value) || 1 })}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                   />
                 </div>
+                <p className="text-xs text-gray-400 mt-2">
+                  Preview: {settings.jobNumberPrefix}{settings.jobNumberNext}
+                </p>
               </div>
-              <p className="text-xs text-gray-400 mt-2">
-                Preview: {settings.jobNumberPrefix}{settings.jobNumberNext}
-              </p>
-            </div>
-            <div>
-              <h3 className="text-sm font-medium text-gray-700 mb-3">Invoice Numbers</h3>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Prefix</label>
-                  <input
+              <div>
+                <h3 className="text-sm font-medium text-gray-700 mb-3">Invoice Numbers</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <Input
+                    label="Prefix"
                     type="text"
                     value={settings.invoiceNumberPrefix}
                     onChange={(e) => setSettings({ ...settings, invoiceNumberPrefix: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                   />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Next Number</label>
-                  <input
+                  <Input
+                    label="Next Number"
                     type="number"
                     value={settings.invoiceNumberNext}
                     onChange={(e) => setSettings({ ...settings, invoiceNumberNext: parseInt(e.target.value) || 1 })}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                   />
                 </div>
+                <p className="text-xs text-gray-400 mt-2">
+                  Preview: {settings.invoiceNumberPrefix}{settings.invoiceNumberNext}
+                </p>
               </div>
-              <p className="text-xs text-gray-400 mt-2">
-                Preview: {settings.invoiceNumberPrefix}{settings.invoiceNumberNext}
-              </p>
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

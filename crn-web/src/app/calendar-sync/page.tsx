@@ -3,6 +3,11 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { RefreshCw, CheckCircle, AlertCircle, Clock, ExternalLink } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/Card";
+import Badge, { StatusBadge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 interface CalendarSource {
   id: string;
@@ -71,82 +76,77 @@ export default function CalendarSyncPage() {
 
   return (
     <div className="p-6 max-w-6xl">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Calendar Sync</h1>
-          <p className="text-sm text-gray-500 mt-1">Manage iCal calendar sources</p>
-        </div>
-        <button
-          onClick={handleSyncAll}
-          disabled={syncingAll}
-          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
-        >
-          <RefreshCw size={14} className={syncingAll ? "animate-spin" : ""} />
-          {syncingAll ? "Syncing..." : "Sync All"}
-        </button>
-      </div>
+      <PageHeader
+        title="Calendar Sync"
+        subtitle="Manage iCal calendar sources"
+        actions={
+          <Button
+            onClick={handleSyncAll}
+            disabled={syncingAll}
+            variant="primary"
+            loading={syncingAll}
+          >
+            <RefreshCw size={14} className={syncingAll ? "animate-spin" : ""} />
+            Sync All
+          </Button>
+        }
+      />
 
       {loading ? (
         <p className="text-gray-400 text-sm">Loading...</p>
       ) : sources.length === 0 ? (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
-          <RefreshCw size={40} className="mx-auto text-gray-300 mb-3" />
-          <p className="text-gray-500 font-medium">No calendar sources configured</p>
-          <p className="text-gray-400 text-sm mt-1">Add an iCal URL to import bookings automatically</p>
-        </div>
+        <Card>
+          <CardContent>
+            <EmptyState
+              icon={<RefreshCw size={40} />}
+              title="No calendar sources configured"
+              description="Add an iCal URL to import bookings automatically"
+            />
+          </CardContent>
+        </Card>
       ) : (
         <div className="space-y-4">
           {sources.map((source) => (
-            <div
-              key={source.id}
-              className="bg-white rounded-xl shadow-sm border border-gray-100 p-5"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  {statusIcon(source)}
-                  <div>
-                    <h3 className="font-semibold text-gray-900">{source.name}</h3>
-                    <div className="flex items-center gap-3 mt-1">
-                      <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                        {source.type}
-                      </span>
-                      <span
-                        className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                          source.status === "active"
-                            ? "bg-green-100 text-green-700"
-                            : "bg-gray-100 text-gray-500"
-                        }`}
-                      >
-                        {source.status}
-                      </span>
-                      {source.eventsCount !== undefined && (
-                        <span className="text-xs text-gray-400">{source.eventsCount} events</span>
-                      )}
+            <Card key={source.id}>
+              <CardContent className="p-5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    {statusIcon(source)}
+                    <div>
+                      <h3 className="font-semibold text-gray-900">{source.name}</h3>
+                      <div className="flex items-center gap-3 mt-1">
+                        <Badge>{source.type}</Badge>
+                        <StatusBadge status={source.status} />
+                        {source.eventsCount !== undefined && (
+                          <span className="text-xs text-gray-400">{source.eventsCount} events</span>
+                        )}
+                      </div>
                     </div>
                   </div>
+                  <div className="flex items-center gap-3">
+                    {source.lastSyncAt && (
+                      <p className="text-xs text-gray-400">
+                        Last sync: {new Date(source.lastSyncAt).toLocaleString()}
+                      </p>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleSync(source.id)}
+                      disabled={syncing === source.id}
+                    >
+                      <RefreshCw size={12} className={syncing === source.id ? "animate-spin" : ""} />
+                      Sync
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  {source.lastSyncAt && (
-                    <p className="text-xs text-gray-400">
-                      Last sync: {new Date(source.lastSyncAt).toLocaleString()}
-                    </p>
-                  )}
-                  <button
-                    onClick={() => handleSync(source.id)}
-                    disabled={syncing === source.id}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
-                  >
-                    <RefreshCw size={12} className={syncing === source.id ? "animate-spin" : ""} />
-                    Sync
-                  </button>
-                </div>
-              </div>
-              {source.error && (
-                <div className="mt-3 p-2.5 bg-red-50 border border-red-200 rounded-lg">
-                  <p className="text-xs text-red-600">{source.error}</p>
-                </div>
-              )}
-            </div>
+                {source.error && (
+                  <div className="mt-3 p-2.5 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-xs text-red-600">{source.error}</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           ))}
         </div>
       )}

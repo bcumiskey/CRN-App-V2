@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "clsx": "2.1.1",
     "crn-shared": "file:../crn-shared",
     "date-fns": "4.1.0",
     "lucide-react": "0.475.0",

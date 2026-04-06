@@ -4,6 +4,9 @@ import { useEffect, useState, useMemo } from "react";
 import { api } from "@/lib/api";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, Calendar } from "lucide-react";
+import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { formatTime } from "@/lib/utils";
 
 interface Job {
   id: string;
@@ -37,12 +40,12 @@ function getWeekDates(baseDate: Date): Date[] {
   return dates;
 }
 
-function formatDate(d: Date): string {
+function formatDateStr(d: Date): string {
   return d.toISOString().split("T")[0];
 }
 
 function isSameDay(d1: Date, d2: Date): boolean {
-  return formatDate(d1) === formatDate(d2);
+  return formatDateStr(d1) === formatDateStr(d2);
 }
 
 export default function CalendarPage() {
@@ -57,8 +60,8 @@ export default function CalendarPage() {
   }, [weekOffset]);
 
   const weekDates = useMemo(() => getWeekDates(baseDate), [baseDate]);
-  const startDate = formatDate(weekDates[0]);
-  const endDate = formatDate(weekDates[6]);
+  const startDate = formatDateStr(weekDates[0]);
+  const endDate = formatDateStr(weekDates[6]);
 
   useEffect(() => {
     setLoading(true);
@@ -72,7 +75,7 @@ export default function CalendarPage() {
   const jobsByDate = useMemo(() => {
     const map: Record<string, Job[]> = {};
     for (const date of weekDates) {
-      map[formatDate(date)] = [];
+      map[formatDateStr(date)] = [];
     }
     for (const job of jobs) {
       const key = job.scheduledDate;
@@ -87,40 +90,28 @@ export default function CalendarPage() {
 
   return (
     <div className="p-6 max-w-6xl">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Calendar</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {weekDates[0].toLocaleDateString("en-US", { month: "long", day: "numeric" })} -{" "}
-            {weekDates[6].toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setWeekOffset((o) => o - 1)}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <ChevronLeft size={20} className="text-gray-500" />
-          </button>
-          <button
-            onClick={() => setWeekOffset(0)}
-            className="px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-          >
-            Today
-          </button>
-          <button
-            onClick={() => setWeekOffset((o) => o + 1)}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <ChevronRight size={20} className="text-gray-500" />
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="Calendar"
+        subtitle={`${weekDates[0].toLocaleDateString("en-US", { month: "long", day: "numeric" })} - ${weekDates[6].toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}`}
+        actions={
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setWeekOffset((o) => o - 1)}>
+              <ChevronLeft size={20} />
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setWeekOffset(0)}>
+              Today
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setWeekOffset((o) => o + 1)}>
+              <ChevronRight size={20} />
+            </Button>
+          </div>
+        }
+      />
 
       {/* Week Strip */}
       <div className="grid grid-cols-7 gap-4">
         {weekDates.map((date) => {
-          const dateStr = formatDate(date);
+          const dateStr = formatDateStr(date);
           const dayJobs = jobsByDate[dateStr] || [];
           const isToday = isSameDay(date, today);
 
@@ -154,7 +145,7 @@ export default function CalendarPage() {
                       }`}
                     >
                       <p className="font-semibold truncate">{job.property.name}</p>
-                      {job.scheduledTime && <p className="opacity-75">{job.scheduledTime}</p>}
+                      {job.scheduledTime && <p className="opacity-75">{formatTime(job.scheduledTime)}</p>}
                       <p className="opacity-75 truncate">
                         {job.assignments.map((a) => a.user.name).join(", ") || job.jobType}
                       </p>

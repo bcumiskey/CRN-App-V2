@@ -13,6 +13,8 @@ import {
   FileText,
   BarChart3,
 } from "lucide-react";
+import { Card } from "@/components/ui/Card";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 const reportCategories = [
   {
@@ -51,10 +53,7 @@ const reportCategories = [
 export default function ReportsPage() {
   return (
     <div className="p-6 max-w-6xl">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Reports</h1>
-        <p className="text-sm text-gray-500 mt-1">Business insights and analytics</p>
-      </div>
+      <PageHeader title="Reports" subtitle="Business insights and analytics" />
 
       <div className="space-y-8">
         {reportCategories.map((category) => (
@@ -67,19 +66,20 @@ export default function ReportsPage() {
                   <Link
                     key={item.href}
                     href={item.href}
-                    className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 hover:border-blue-200 hover:shadow-md transition-all group"
                   >
-                    <div className="flex items-start gap-4">
-                      <div className="p-2.5 bg-blue-50 rounded-lg group-hover:bg-blue-100 transition-colors">
-                        <Icon size={20} className="text-blue-600" />
+                    <Card className="p-5 hover:border-blue-200 hover:shadow-md transition-all group h-full">
+                      <div className="flex items-start gap-4">
+                        <div className="p-2.5 bg-blue-50 rounded-lg group-hover:bg-blue-100 transition-colors">
+                          <Icon size={20} className="text-blue-600" />
+                        </div>
+                        <div>
+                          <h3 className="font-medium text-gray-900 group-hover:text-blue-600 transition-colors">
+                            {item.label}
+                          </h3>
+                          <p className="text-sm text-gray-500 mt-1">{item.description}</p>
+                        </div>
                       </div>
-                      <div>
-                        <h3 className="font-medium text-gray-900 group-hover:text-blue-600 transition-colors">
-                          {item.label}
-                        </h3>
-                        <p className="text-sm text-gray-500 mt-1">{item.description}</p>
-                      </div>
-                    </div>
+                    </Card>
                   </Link>
                 );
               })}

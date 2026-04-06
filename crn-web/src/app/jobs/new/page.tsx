@@ -5,6 +5,9 @@ import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Check, Plus } from "lucide-react";
 import type { FinancialModelConfig } from "crn-shared";
+import { Card, CardContent } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 
 interface Property {
   id: string;
@@ -140,179 +143,177 @@ export default function NewJobPage() {
 
       <div className="space-y-6">
         {/* Property */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Property</h2>
-          <select
-            value={propertyId}
-            onChange={(e) => setPropertyId(e.target.value)}
-            className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-          >
-            <option value="">Select a property...</option>
-            {properties.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name} ({p.code})
-              </option>
-            ))}
-          </select>
-        </div>
+        <Card>
+          <CardContent>
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Property</h2>
+            <select
+              value={propertyId}
+              onChange={(e) => setPropertyId(e.target.value)}
+              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+            >
+              <option value="">Select a property...</option>
+              {properties.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} ({p.code})
+                </option>
+              ))}
+            </select>
+          </CardContent>
+        </Card>
 
         {/* Date, Time, Type */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Schedule</h2>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-              <input
+        <Card>
+          <CardContent>
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Schedule</h2>
+            <div className="grid grid-cols-2 gap-4">
+              <Input
+                label="Date"
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Time (optional)</label>
-              <input
+              <Input
+                label="Time (optional)"
                 type="time"
                 value={time}
                 onChange={(e) => setTime(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
               />
             </div>
-          </div>
-          <div className="mt-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">Job Type</label>
-            <div className="flex flex-wrap gap-2">
-              {jobTypes.map((type) => (
-                <button
-                  key={type}
-                  onClick={() => setJobType(type)}
-                  className={`px-3 py-1.5 text-sm rounded-full border transition-colors ${
-                    jobType === type
-                      ? "bg-blue-600 text-white border-blue-600"
-                      : "bg-white text-gray-600 border-gray-200 hover:border-blue-300"
-                  }`}
-                >
-                  {type}
-                </button>
-              ))}
+            <div className="mt-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Job Type</label>
+              <div className="flex flex-wrap gap-2">
+                {jobTypes.map((type) => (
+                  <button
+                    key={type}
+                    onClick={() => setJobType(type)}
+                    className={`px-3 py-1.5 text-sm rounded-full border transition-colors ${
+                      jobType === type
+                        ? "bg-blue-600 text-white border-blue-600"
+                        : "bg-white text-gray-600 border-gray-200 hover:border-blue-300"
+                    }`}
+                  >
+                    {type}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
         {/* Financial */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Financial</h2>
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Fee ($)</label>
-              <input
+        <Card>
+          <CardContent>
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Financial</h2>
+            <div className="grid grid-cols-3 gap-4">
+              <Input
+                label="Fee ($)"
                 type="number"
                 value={fee}
                 onChange={(e) => setFee(e.target.value)}
                 placeholder="0.00"
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">House Cut %</label>
-              <input
+              <Input
+                label="House Cut %"
                 type="number"
                 value={houseCutPercent}
                 onChange={(e) => setHouseCutPercent(e.target.value)}
                 placeholder="0"
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
               />
-            </div>
-            <div className="flex items-end">
-              <label className="flex items-center gap-2 cursor-pointer pb-2.5">
-                <button
-                  onClick={() => setIsBtoB(!isBtoB)}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    isBtoB ? "bg-orange-500" : "bg-gray-200"
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      isBtoB ? "translate-x-6" : "translate-x-1"
-                    }`}
-                  />
-                </button>
-                <span className="text-sm font-medium text-gray-700">B2B</span>
-              </label>
-            </div>
-          </div>
-        </div>
-
-        {/* Crew */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Crew</h2>
-          <div className="space-y-2">
-            {teamMembers.map((member) => {
-              const selected = selectedCrew.find((c) => c.userId === member.id);
-              return (
-                <div key={member.id} className="flex items-center gap-3 p-3 rounded-lg border border-gray-100">
+              <div className="flex items-end">
+                <label className="flex items-center gap-2 cursor-pointer pb-2.5">
                   <button
-                    onClick={() => toggleCrewMember(member.id)}
-                    className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${
-                      selected
-                        ? "bg-blue-600 border-blue-600 text-white"
-                        : "border-gray-300 hover:border-blue-400"
+                    onClick={() => setIsBtoB(!isBtoB)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      isBtoB ? "bg-orange-500" : "bg-gray-200"
                     }`}
                   >
-                    {selected && <Check size={12} />}
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        isBtoB ? "translate-x-6" : "translate-x-1"
+                      }`}
+                    />
                   </button>
-                  <span className="text-sm font-medium text-gray-900 flex-1">{member.name}</span>
-                  {selected && (
-                    <div className="flex gap-1">
-                      {shareLevels.map((level) => (
-                        <button
-                          key={level.value}
-                          onClick={() => updateCrewShare(member.id, level.value)}
-                          className={`text-xs px-2 py-1 rounded-full transition-colors ${
-                            selected.share === level.value
-                              ? "bg-blue-600 text-white"
-                              : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                          }`}
-                        >
-                          {level.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
+                  <span className="text-sm font-medium text-gray-700">B2B</span>
+                </label>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Crew */}
+        <Card>
+          <CardContent>
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Crew</h2>
+            <div className="space-y-2">
+              {teamMembers.map((member) => {
+                const selected = selectedCrew.find((c) => c.userId === member.id);
+                return (
+                  <div key={member.id} className="flex items-center gap-3 p-3 rounded-lg border border-gray-100">
+                    <button
+                      onClick={() => toggleCrewMember(member.id)}
+                      className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${
+                        selected
+                          ? "bg-blue-600 border-blue-600 text-white"
+                          : "border-gray-300 hover:border-blue-400"
+                      }`}
+                    >
+                      {selected && <Check size={12} />}
+                    </button>
+                    <span className="text-sm font-medium text-gray-900 flex-1">{member.name}</span>
+                    {selected && (
+                      <div className="flex gap-1">
+                        {shareLevels.map((level) => (
+                          <button
+                            key={level.value}
+                            onClick={() => updateCrewShare(member.id, level.value)}
+                            className={`text-xs px-2 py-1 rounded-full transition-colors ${
+                              selected.share === level.value
+                                ? "bg-blue-600 text-white"
+                                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                            }`}
+                          >
+                            {level.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Notes */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Notes</h2>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={3}
-            placeholder="Any notes for this job..."
-            className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none"
-          />
-        </div>
+        <Card>
+          <CardContent>
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Notes</h2>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={3}
+              placeholder="Any notes for this job..."
+              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none"
+            />
+          </CardContent>
+        </Card>
 
         {/* Actions */}
         <div className="flex gap-3 justify-end pb-8">
-          <button
+          <Button
             onClick={() => handleSave(true)}
             disabled={saving || !propertyId || !fee}
-            className="flex items-center gap-2 px-6 py-2.5 bg-white border border-blue-600 text-blue-600 hover:bg-blue-50 text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+            variant="outline"
           >
             <Plus size={14} /> Save & Add Another
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={() => handleSave(false)}
             disabled={saving || !propertyId || !fee}
-            className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+            variant="primary"
           >
             <Check size={14} /> Save & Done
-          </button>
+          </Button>
         </div>
       </div>
     </div>
