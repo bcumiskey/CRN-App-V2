@@ -288,8 +288,8 @@ function JobsPageContent() {
 
   const fetchTeamMembers = async () => {
     try {
-      const data = await api.get<{ users: TeamMember[] }>("/users");
-      setTeamMembers(data.users || []);
+      const data = await api.get<{ members: TeamMember[] }>("/team");
+      setTeamMembers(data.members || []);
     } catch (error) {
       console.error("Failed to fetch team members:", error);
     }
