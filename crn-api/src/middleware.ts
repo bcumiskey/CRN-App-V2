@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const ALLOWED_ORIGINS = [
-  "http://localhost:8081",
   "http://localhost:3000",
+  "http://localhost:3001",
+  "http://localhost:8081",
   "http://localhost:19006",
   "https://crn-app-v2.vercel.app",
 ];
