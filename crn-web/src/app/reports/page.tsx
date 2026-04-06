@@ -274,7 +274,7 @@ export default function ReportsPage() {
           api.get<ArAging>("/reports/ar-aging", params),
         ]);
       setPnl(pnlRes);
-      setRevenueByMonth(monthRes.items ?? monthRes.breakdown ?? monthRes ?? []);
+      setRevenueByMonth((monthRes as any).items ?? (monthRes as any).breakdown ?? monthRes ?? []);
       setWorkerEarnings(workersRes ?? []);
       setCompletionRate(completionRes);
       setJobVolume(volumeRes);
@@ -296,8 +296,8 @@ export default function ReportsPage() {
         api.get<{ items: RevenueItem[] }>("/reports/revenue", { ...params, groupBy: "owner" }),
       ]);
       setRevenueByProperty(propRes ?? []);
-      setRevenueByType(typeRes.items ?? typeRes.breakdown ?? typeRes ?? []);
-      setRevenueByOwner(ownerRes.items ?? ownerRes.breakdown ?? ownerRes ?? []);
+      setRevenueByType((typeRes as any).items ?? (typeRes as any).breakdown ?? typeRes ?? []);
+      setRevenueByOwner((ownerRes as any).items ?? (ownerRes as any).breakdown ?? ownerRes ?? []);
     } catch (err) {
       console.error("Failed to fetch revenue:", err);
     } finally {
