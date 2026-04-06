@@ -4,7 +4,6 @@
   "private": true,
   "workspaces": [
     "crn-shared",
-    "crn-api",
-    "crn-app"
+    "crn-api"
   ]
 }

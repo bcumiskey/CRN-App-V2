@@ -3,23 +3,22 @@ const path = require("path");
 
 const config = getDefaultConfig(__dirname);
 
-// CRITICAL: Only resolve from crn-app's own node_modules first,
-// then fall back to root for workspace packages (crn-shared).
-// This prevents Metro from picking up crn-api's React 19.1 from root.
+// crn-app is NOT in the npm workspace (to avoid React version conflicts).
+// Only resolve from crn-app's own node_modules.
+// Do NOT let Metro look up to the monorepo root node_modules.
 config.resolver.nodeModulesPaths = [
   path.resolve(__dirname, "node_modules"),
-  path.resolve(__dirname, ".."),  // for crn-shared workspace resolution
 ];
 
-// Block root node_modules react from being resolved
-config.resolver.blockList = [
-  /\.\.\/node_modules\/react\/.*/,
-  /\.\.\/node_modules\/react-dom\/.*/,
-];
-
-// Watch crn-shared for changes
+// crn-shared is linked via file: reference, watch it for dev changes
 config.watchFolders = [
   path.resolve(__dirname, "../crn-shared"),
+];
+
+// Explicitly block the root node_modules from resolution
+config.resolver.blockList = [
+  new RegExp(path.resolve(__dirname, "../node_modules/react/.*").replace(/\\/g, "\\\\")),
+  new RegExp(path.resolve(__dirname, "../node_modules/react-dom/.*").replace(/\\/g, "\\\\")),
 ];
 
 module.exports = config;

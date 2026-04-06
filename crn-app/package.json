@@ -14,7 +14,7 @@
     "@gorhom/bottom-sheet": "5.1.4",
     "@react-native-community/netinfo": "11.4.1",
     "@tanstack/react-query": "5.75.5",
-    "crn-shared": "*",
+    "crn-shared": "file:../crn-shared",
     "date-fns": "4.1.0",
     "expo": "^53.0.9",
     "expo-asset": "~11.1.7",
@@ -36,6 +36,7 @@
     "react-native-screens": "4.11.1",
     "react-native-svg": "15.11.2",
     "react-native-web": "0.20.0",
+    "zod": "3.24.4",
     "zustand": "5.0.5"
   },
   "devDependencies": {
