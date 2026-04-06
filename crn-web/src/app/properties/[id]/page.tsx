@@ -522,13 +522,13 @@ export default function PropertyDetailPage() {
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                   <InlineField
                     label="Default Fee"
-                    value={String(property.defaultFee)}
+                    value={String(property.baseRate)}
                     type="number"
                     onSave={(v) => updateField("defaultFee", parseFloat(v) || 0)}
                   />
                   <InlineField
                     label="House Cut %"
-                    value={String(property.defaultHouseCutPercent)}
+                    value={String(property.expensePercent)}
                     type="number"
                     onSave={(v) => updateField("defaultHouseCutPercent", parseFloat(v) || 0)}
                   />
@@ -715,11 +715,11 @@ export default function PropertyDetailPage() {
                   </div>
                   <div className="flex justify-between items-center text-sm">
                     <span className="text-gray-500">Default Fee</span>
-                    <span className="font-semibold">{formatCurrency(property.defaultFee)}</span>
+                    <span className="font-semibold">{formatCurrency(property.baseRate)}</span>
                   </div>
                   <div className="flex justify-between items-center text-sm">
                     <span className="text-gray-500">House Cut</span>
-                    <span className="font-semibold">{property.defaultHouseCutPercent}%</span>
+                    <span className="font-semibold">{property.expensePercent}%</span>
                   </div>
                 </div>
               </CardContent>

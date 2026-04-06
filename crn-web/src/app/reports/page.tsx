@@ -274,7 +274,7 @@ export default function ReportsPage() {
           api.get<ArAging>("/reports/ar-aging", params),
         ]);
       setPnl(pnlRes);
-      setRevenueByMonth(monthRes.items ?? []);
+      setRevenueByMonth(monthRes.items ?? monthRes.breakdown ?? monthRes ?? []);
       setWorkerEarnings(workersRes ?? []);
       setCompletionRate(completionRes);
       setJobVolume(volumeRes);
@@ -296,8 +296,8 @@ export default function ReportsPage() {
         api.get<{ items: RevenueItem[] }>("/reports/revenue", { ...params, groupBy: "owner" }),
       ]);
       setRevenueByProperty(propRes ?? []);
-      setRevenueByType(typeRes.items ?? []);
-      setRevenueByOwner(ownerRes.items ?? []);
+      setRevenueByType(typeRes.items ?? typeRes.breakdown ?? typeRes ?? []);
+      setRevenueByOwner(ownerRes.items ?? ownerRes.breakdown ?? ownerRes ?? []);
     } catch (err) {
       console.error("Failed to fetch revenue:", err);
     } finally {
@@ -585,13 +585,13 @@ function OverviewTab({
             </div>
 
             {/* Expense breakdown */}
-            {pnl.operatingExpenses.byCategory.length > 0 && (
+            {pnl?.operatingExpenses?.byCategory.length > 0 && (
               <div className="mt-6 pt-6 border-t border-gray-100">
                 <h4 className="text-sm font-medium text-gray-700 mb-3">
                   Operating Expenses by Category
                 </h4>
                 <div className="space-y-2">
-                  {pnl.operatingExpenses.byCategory.map((cat) => {
+                  {pnl?.operatingExpenses?.byCategory.map((cat) => {
                     const pct =
                       pnl.operatingExpenses.total > 0
                         ? (cat.amount / pnl.operatingExpenses.total) * 100
@@ -708,11 +708,11 @@ function OverviewTab({
                 </div>
               </div>
 
-              {completionRate.trend.length > 0 && (
+              {completionRate?.trend?.length > 0 && (
                 <div className="mt-4 pt-4 border-t border-gray-100">
                   <p className="text-xs text-gray-500 mb-2">Monthly Trend</p>
                   <div className="flex items-end gap-1 h-16">
-                    {completionRate.trend.map((t) => (
+                    {completionRate?.trend?.map((t) => (
                       <div
                         key={t.month}
                         className="flex-1 bg-green-400 rounded-t hover:bg-green-500 transition-colors"
@@ -754,11 +754,11 @@ function OverviewTab({
                   Busiest day: <span className="font-medium">{jobVolume.busiestDay}</span>
                 </p>
               )}
-              {jobVolume.dayOfWeekDistribution.length > 0 && (
+              {jobVolume?.dayOfWeekDistribution?.length > 0 && (
                 <div className="space-y-1.5">
-                  {jobVolume.dayOfWeekDistribution.map((d) => {
+                  {jobVolume?.dayOfWeekDistribution?.map((d) => {
                     const maxCount = Math.max(
-                      ...jobVolume.dayOfWeekDistribution.map((x) => x.count),
+                      ...jobVolume?.dayOfWeekDistribution?.map((x) => x.count),
                       1
                     );
                     return (
@@ -1472,7 +1472,7 @@ function TaxTab({
       </Card>
 
       {/* Expense Detail from P&L */}
-      {pnl && pnl.operatingExpenses.byCategory.length > 0 && (
+      {pnl && pnl?.operatingExpenses?.byCategory.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -1497,7 +1497,7 @@ function TaxTab({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {pnl.operatingExpenses.byCategory.map((cat) => (
+                  {pnl?.operatingExpenses?.byCategory.map((cat) => (
                     <tr key={cat.name} className="hover:bg-gray-50">
                       <td className="px-4 py-2.5 font-medium text-gray-900">{cat.name}</td>
                       <td className="px-3 py-2.5 text-right font-medium">
