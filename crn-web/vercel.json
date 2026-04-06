@@ -1,0 +1,5 @@
+{
+  "installCommand": "cd ../crn-shared && npm install && npm run build && cd ../crn-web && npm install",
+  "buildCommand": "npx next build",
+  "outputDirectory": ".next"
+}
