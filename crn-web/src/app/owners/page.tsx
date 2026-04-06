@@ -140,7 +140,7 @@ function OwnersPageContent() {
     }
   }
 
-  const totalProperties = owners.reduce((sum, o) => sum + o._count.properties, 0)
+  const totalProperties = owners.reduce((sum, o) => sum + o.properties?.length || 0, 0)
 
   return (
     <div className="min-h-screen">
@@ -218,7 +218,7 @@ function OwnersPageContent() {
                         </div>
                         {owner.isActive && (
                           <Badge variant="info" className="mt-1">
-                            {owner._count.properties} {owner._count.properties === 1 ? 'property' : 'properties'}
+                            {(owner.properties?.length || 0)} {(owner.properties?.length || 0) === 1 ? 'property' : 'properties'}
                           </Badge>
                         )}
                       </div>
@@ -283,7 +283,7 @@ function OwnersPageContent() {
                     >
                       Edit
                     </Button>
-                    {owner._count.properties === 0 && (
+                    {(owner.properties?.length || 0) === 0 && (
                       <Button
                         variant="outline"
                         size="sm"

@@ -1,270 +1,301 @@
-"use client";
+'use client'
 
-import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
-import { Save, AlertCircle } from "lucide-react";
-import type { FinancialModelConfig, FinancialBucket } from "crn-shared";
-import { Card, CardContent } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
-import { PageHeader } from "@/components/layout/PageHeader";
+import { useState, useEffect } from 'react'
+import { Building, DollarSign, Calendar, Save, Image, FileText, ExternalLink } from 'lucide-react'
+import { PageHeader } from '@/components/layout/PageHeader'
+import { Card, CardContent, CardHeader } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
+import v1Fetch from '@/lib/v1-compat'
 
-interface Settings {
-  businessName: string;
-  businessAddress?: string;
-  businessPhone?: string;
-  businessEmail?: string;
-  financialModel: FinancialModelConfig;
-  jobNumberPrefix: string;
-  jobNumberNext: number;
-  invoiceNumberPrefix: string;
-  invoiceNumberNext: number;
+function toast(msg: string, type: 'success' | 'error' = 'success') {
+  const div = document.createElement('div')
+  div.className = `fixed top-4 right-4 z-50 px-4 py-2 rounded-lg shadow-lg text-white text-sm ${type === 'error' ? 'bg-red-600' : 'bg-green-600'}`
+  div.textContent = msg; document.body.appendChild(div); setTimeout(() => div.remove(), 3000)
+}
+
+interface CompanySettings {
+  id: string
+  companyName: string
+  address: string | null
+  phone: string | null
+  email: string | null
+  website: string | null
+  logoUrl: string | null
+  invoiceFooter: string | null
+  invoiceTerms: string | null
+  linenTargetMultiplier: number
 }
 
 export default function SettingsPage() {
-  const [settings, setSettings] = useState<Settings | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [settings, setSettings] = useState<CompanySettings>({
+    id: 'default',
+    companyName: 'Cleaning Right Now',
+    address: '',
+    phone: '',
+    email: '',
+    website: '',
+    logoUrl: '',
+    invoiceFooter: '',
+    invoiceTerms: '',
+    linenTargetMultiplier: 2,
+  })
+  const [expensePercentage, setExpensePercentage] = useState('12')
+  const [loading, setLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
 
   useEffect(() => {
-    api
-      .get<Settings>("/settings")
-      .then(setSettings)
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, []);
+    loadSettings()
+  }, [])
+
+  const loadSettings = async () => {
+    try {
+      const res = await v1Fetch('/api/settings')
+      if (res.ok) {
+        const data = await res.json()
+        setSettings({
+          ...data,
+          address: data.address || '',
+          phone: data.phone || '',
+          email: data.email || '',
+          website: data.website || '',
+          logoUrl: data.logoUrl || '',
+          invoiceFooter: data.invoiceFooter || '',
+          invoiceTerms: data.invoiceTerms || '',
+          linenTargetMultiplier: data.linenTargetMultiplier ?? 2,
+        })
+      }
+    } catch (error) {
+      console.error('Failed to load settings:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleSave = async () => {
-    if (!settings) return;
-    setSaving(true);
-    setSaved(false);
+    setIsSaving(true)
     try {
-      await api.patch("/settings", settings);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
-    } catch (err) {
-      console.error(err);
+      const res = await v1Fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings),
+      })
+
+      if (!res.ok) throw new Error('Failed to save')
+
+      toast('Settings saved successfully')
+    } catch (error) {
+      toast('Failed to save settings', 'error')
     } finally {
-      setSaving(false);
+      setIsSaving(false)
     }
-  };
-
-  const updateBucket = (index: number, field: keyof FinancialBucket, value: string | number) => {
-    if (!settings) return;
-    const buckets = [...settings.financialModel.buckets];
-    buckets[index] = { ...buckets[index], [field]: value };
-    setSettings({
-      ...settings,
-      financialModel: { ...settings.financialModel, buckets },
-    });
-  };
-
-  const addBucket = () => {
-    if (!settings) return;
-    const buckets = [
-      ...settings.financialModel.buckets,
-      { name: "New Bucket", percent: 0, type: "business" as const },
-    ];
-    setSettings({
-      ...settings,
-      financialModel: { ...settings.financialModel, buckets },
-    });
-  };
-
-  const removeBucket = (index: number) => {
-    if (!settings) return;
-    const buckets = settings.financialModel.buckets.filter((_, i) => i !== index);
-    setSettings({
-      ...settings,
-      financialModel: { ...settings.financialModel, buckets },
-    });
-  };
+  }
 
   if (loading) {
     return (
-      <div className="p-6 max-w-6xl">
-        <p className="text-gray-400 text-sm">Loading settings...</p>
+      <div className="min-h-screen">
+        <PageHeader title="Settings" />
+        <div className="p-6 flex justify-center">
+          <div className="animate-pulse text-gray-500">Loading settings...</div>
+        </div>
       </div>
-    );
+    )
   }
-
-  if (!settings) {
-    return (
-      <div className="p-6 max-w-6xl">
-        <p className="text-gray-500">Failed to load settings</p>
-      </div>
-    );
-  }
-
-  const bucketSum = settings.financialModel.buckets.reduce((sum, b) => sum + b.percent, 0);
-  const bucketsValid = Math.abs(bucketSum - 100) < 0.01;
 
   return (
-    <div className="p-6 max-w-4xl">
-      <PageHeader
-        title="Settings"
-        subtitle="Business configuration"
-        actions={
-          <Button
-            onClick={handleSave}
-            disabled={saving}
-            variant="primary"
-            loading={saving}
-          >
-            <Save size={14} />
-            {saved ? "Saved!" : "Save Changes"}
-          </Button>
-        }
-      />
+    <div className="min-h-screen">
+      <PageHeader title="Settings" />
 
-      <div className="space-y-6">
-        {/* Business Info */}
+      <div className="p-6 max-w-4xl space-y-6">
+        {/* Business Information */}
         <Card>
-          <CardContent>
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Business Information</h2>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Building size={20} className="text-gray-400" />
+              <h3 className="font-semibold text-gray-900">Business Information</h3>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Input
+              label="Company Name"
+              value={settings.companyName}
+              onChange={(e) => setSettings({ ...settings, companyName: e.target.value })}
+              placeholder="Your Business Name"
+            />
             <div className="grid grid-cols-2 gap-4">
-              <Input
-                label="Business Name"
-                type="text"
-                value={settings.businessName}
-                onChange={(e) => setSettings({ ...settings, businessName: e.target.value })}
-              />
-              <Input
-                label="Phone"
-                type="text"
-                value={settings.businessPhone ?? ""}
-                onChange={(e) => setSettings({ ...settings, businessPhone: e.target.value })}
-              />
               <Input
                 label="Email"
                 type="email"
-                value={settings.businessEmail ?? ""}
-                onChange={(e) => setSettings({ ...settings, businessEmail: e.target.value })}
+                value={settings.email || ''}
+                onChange={(e) => setSettings({ ...settings, email: e.target.value })}
+                placeholder="business@example.com"
               />
               <Input
-                label="Address"
-                type="text"
-                value={settings.businessAddress ?? ""}
-                onChange={(e) => setSettings({ ...settings, businessAddress: e.target.value })}
+                label="Phone"
+                value={settings.phone || ''}
+                onChange={(e) => setSettings({ ...settings, phone: e.target.value })}
+                placeholder="(555) 123-4567"
+              />
+            </div>
+            <Input
+              label="Address"
+              value={settings.address || ''}
+              onChange={(e) => setSettings({ ...settings, address: e.target.value })}
+              placeholder="123 Main St, City, State 12345"
+            />
+            <Input
+              label="Website"
+              value={settings.website || ''}
+              onChange={(e) => setSettings({ ...settings, website: e.target.value })}
+              placeholder="www.yourbusiness.com"
+            />
+          </CardContent>
+        </Card>
+
+        {/* Company Logo */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Image size={20} className="text-gray-400" />
+              <h3 className="font-semibold text-gray-900">Company Logo</h3>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-start gap-6">
+              {settings.logoUrl && (
+                <div className="flex-shrink-0">
+                  <img
+                    src={settings.logoUrl}
+                    alt="Company Logo"
+                    className="h-20 w-auto object-contain border rounded-lg p-2"
+                  />
+                </div>
+              )}
+              <div className="flex-1">
+                <p className="text-sm text-gray-600 mb-3">
+                  Upload your company logo. It will appear on invoices, statements, and other documents.
+                </p>
+                <p className="text-xs text-gray-500">
+                  Recommended: PNG or JPG, at least 200x80 pixels. Max 5MB.
+                </p>
+                <div className="mt-4">
+                  <Input
+                    label="Logo URL"
+                    value={settings.logoUrl || ''}
+                    onChange={(e) => setSettings({ ...settings, logoUrl: e.target.value })}
+                    placeholder="https://example.com/your-logo.png"
+                  />
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Document Settings */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <FileText size={20} className="text-gray-400" />
+              <h3 className="font-semibold text-gray-900">Document Settings</h3>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Invoice Payment Terms
+              </label>
+              <textarea
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                rows={2}
+                value={settings.invoiceTerms || ''}
+                onChange={(e) => setSettings({ ...settings, invoiceTerms: e.target.value })}
+                placeholder="Payment is due upon receipt. Please make checks payable to..."
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Invoice Footer Message
+              </label>
+              <textarea
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                rows={2}
+                value={settings.invoiceFooter || ''}
+                onChange={(e) => setSettings({ ...settings, invoiceFooter: e.target.value })}
+                placeholder="Thank you for your business!"
               />
             </div>
           </CardContent>
         </Card>
 
-        {/* Financial Model */}
+        {/* Financial Settings */}
         <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <DollarSign size={20} className="text-gray-400" />
+              <h3 className="font-semibold text-gray-900">Financial Settings</h3>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="max-w-xs">
+              <Input
+                label="Default Expense Percentage"
+                type="number"
+                min="0"
+                max="100"
+                value={expensePercentage}
+                onChange={(e) => setExpensePercentage(e.target.value)}
+                placeholder="12"
+              />
+              <p className="text-sm text-gray-500 mt-1">
+                This percentage is deducted from job rates for business expenses before calculating
+                team payments.
+              </p>
+            </div>
+            <div className="max-w-xs">
+              <Input
+                label="Linen Target (Flips)"
+                type="number"
+                min="1"
+                max="10"
+                value={settings.linenTargetMultiplier.toString()}
+                onChange={(e) => setSettings({ ...settings, linenTargetMultiplier: parseInt(e.target.value) || 2 })}
+                placeholder="2"
+              />
+              <p className="text-sm text-gray-500 mt-1">
+                Low inventory alerts trigger when stock falls below this many flips worth of linens.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Calendar Integration */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Calendar size={20} className="text-gray-400" />
+              <h3 className="font-semibold text-gray-900">Calendar Integration</h3>
+            </div>
+          </CardHeader>
           <CardContent>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900">Financial Model</h2>
-              <div className="flex items-center gap-2">
-                {!bucketsValid && (
-                  <span className="flex items-center gap-1 text-sm text-red-600">
-                    <AlertCircle size={14} />
-                    Must sum to 100% (currently {bucketSum.toFixed(1)}%)
-                  </span>
-                )}
-                {bucketsValid && (
-                  <span className="text-sm text-green-600 font-medium">100% allocated</span>
-                )}
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              {settings.financialModel.buckets.map((bucket, i) => (
-                <div key={i} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                  <Input
-                    type="text"
-                    value={bucket.name}
-                    onChange={(e) => updateBucket(i, "name", e.target.value)}
-                    placeholder="Bucket name"
-                    className="flex-1"
-                  />
-                  <div className="w-24">
-                    <Input
-                      type="number"
-                      value={bucket.percent}
-                      onChange={(e) => updateBucket(i, "percent", parseFloat(e.target.value) || 0)}
-                      className="text-right"
-                    />
-                  </div>
-                  <span className="text-sm text-gray-500 w-4">%</span>
-                  <select
-                    value={bucket.type}
-                    onChange={(e) => updateBucket(i, "type", e.target.value)}
-                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                  >
-                    <option value="business">Business</option>
-                    <option value="owner">Owner</option>
-                    <option value="worker_pool">Worker Pool</option>
-                  </select>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => removeBucket(i)}
-                    className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                  >
-                    Remove
-                  </Button>
-                </div>
-              ))}
-            </div>
-
-            <Button variant="ghost" size="sm" onClick={addBucket} className="mt-3">
-              + Add Bucket
+            <p className="text-gray-600 mb-4">
+              Calendar integrations are configured per-property. Edit a property to add a Turno or
+              Google Calendar iCal URL.
+            </p>
+            <Button variant="outline" onClick={() => (window.location.href = '/properties')}>
+              <ExternalLink size={16} />
+              Manage Properties
             </Button>
           </CardContent>
         </Card>
 
-        {/* Numbering */}
-        <Card>
-          <CardContent>
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Numbering</h2>
-            <div className="grid grid-cols-2 gap-6">
-              <div>
-                <h3 className="text-sm font-medium text-gray-700 mb-3">Job Numbers</h3>
-                <div className="grid grid-cols-2 gap-3">
-                  <Input
-                    label="Prefix"
-                    type="text"
-                    value={settings.jobNumberPrefix}
-                    onChange={(e) => setSettings({ ...settings, jobNumberPrefix: e.target.value })}
-                  />
-                  <Input
-                    label="Next Number"
-                    type="number"
-                    value={settings.jobNumberNext}
-                    onChange={(e) => setSettings({ ...settings, jobNumberNext: parseInt(e.target.value) || 1 })}
-                  />
-                </div>
-                <p className="text-xs text-gray-400 mt-2">
-                  Preview: {settings.jobNumberPrefix}{settings.jobNumberNext}
-                </p>
-              </div>
-              <div>
-                <h3 className="text-sm font-medium text-gray-700 mb-3">Invoice Numbers</h3>
-                <div className="grid grid-cols-2 gap-3">
-                  <Input
-                    label="Prefix"
-                    type="text"
-                    value={settings.invoiceNumberPrefix}
-                    onChange={(e) => setSettings({ ...settings, invoiceNumberPrefix: e.target.value })}
-                  />
-                  <Input
-                    label="Next Number"
-                    type="number"
-                    value={settings.invoiceNumberNext}
-                    onChange={(e) => setSettings({ ...settings, invoiceNumberNext: parseInt(e.target.value) || 1 })}
-                  />
-                </div>
-                <p className="text-xs text-gray-400 mt-2">
-                  Preview: {settings.invoiceNumberPrefix}{settings.invoiceNumberNext}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Save Button */}
+        <div className="flex justify-end">
+          <Button onClick={handleSave} disabled={isSaving}>
+            <Save size={16} />
+            {isSaving ? 'Saving...' : 'Save Settings'}
+          </Button>
+        </div>
       </div>
     </div>
-  );
+  )
 }
