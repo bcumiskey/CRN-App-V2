@@ -290,8 +290,27 @@ export async function v1Fetch(
     },
   });
 
-  // For non-OK responses, pass through as-is
+  // For non-OK responses: return empty data for known-missing endpoints
+  // to prevent page crashes, pass through errors for actual API calls
   if (!response.ok) {
+    if (response.status === 404) {
+      // These endpoints may not exist in V2 — return safe empty responses
+      if (pathPart.includes("/alerts")) {
+        return new Response(JSON.stringify({ alerts: [], summary: { total: 0, critical: 0, warnings: 0 } }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (pathPart.includes("/recurring-schedules")) {
+        return new Response(JSON.stringify([]), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (pathPart.includes("/dashboard/stats")) {
+        return new Response(JSON.stringify({ monthlyRevenue: 0, pendingFromClients: 0, owedToTeam: 0, draftInvoices: 0, lowStockItems: 0 }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
     return response;
   }
 

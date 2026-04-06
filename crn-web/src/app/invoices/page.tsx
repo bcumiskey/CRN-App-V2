@@ -1,118 +1,154 @@
-"use client";
+'use client'
 
-import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
-import { useRouter } from "next/navigation";
-import { FileText } from "lucide-react";
-import { Card } from "@/components/ui/Card";
-import { StatusBadge } from "@/components/ui/Badge";
-import { PageHeader } from "@/components/layout/PageHeader";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { FileText, Plus, Clock, CheckCircle, Send } from 'lucide-react'
+import { PageHeader } from '@/components/layout/PageHeader'
+import { Card, CardContent } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import Badge from '@/components/ui/Badge'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { formatCurrency, formatDate } from '@/lib/utils'
+import v1Fetch from '@/lib/v1-compat'
 
-interface Invoice {
-  id: string;
-  invoiceNumber: string;
-  date: string;
-  dueDate?: string;
-  ownerName: string;
-  propertyName: string;
-  type: string;
-  status: string;
-  totalAmount: number;
+function toast(msg: string, type: 'success' | 'error' = 'success') {
+  const div = document.createElement('div')
+  div.className = `fixed top-4 right-4 z-50 px-4 py-2 rounded-lg shadow-lg text-white text-sm ${type === 'error' ? 'bg-red-600' : 'bg-green-600'}`
+  div.textContent = msg; document.body.appendChild(div); setTimeout(() => div.remove(), 3000)
 }
 
-const tabs = [
-  { label: "All", value: "" },
-  { label: "Draft", value: "DRAFT" },
-  { label: "Sent", value: "SENT" },
-  { label: "Paid", value: "PAID" },
-  { label: "Overdue", value: "OVERDUE" },
-  { label: "Void", value: "VOID" },
-];
+interface Invoice {
+  id: string
+  invoiceNumber: string
+  property: { name: string; ownerName: string }
+  invoiceDate: string
+  total: number
+  status: string
+}
 
 export default function InvoicesPage() {
-  const router = useRouter();
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("");
+  const router = useRouter()
+  const [invoices, setInvoices] = useState<Invoice[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    setLoading(true);
-    api
-      .get<{ invoices: Invoice[] }>("/invoices", { status: activeTab || undefined })
-      .then((data) => setInvoices(data.invoices))
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [activeTab]);
+    fetchInvoices()
+  }, [])
+
+  const fetchInvoices = async () => {
+    try {
+      const response = await v1Fetch('/api/invoices')
+      if (response.ok) {
+        setInvoices(await response.json())
+      } else {
+        toast('Failed to load invoices', 'error')
+      }
+    } catch (error) {
+      console.error('Failed to fetch invoices:', error)
+      toast('Failed to load invoices', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const getStatusBadge = (status: string) => {
+    const variants: Record<string, 'warning' | 'info' | 'success'> = {
+      draft: 'warning',
+      sent: 'info',
+      paid: 'success',
+    }
+    const icons: Record<string, typeof Clock> = {
+      draft: Clock,
+      sent: Send,
+      paid: CheckCircle,
+    }
+    const Icon = icons[status] || Clock
+    return (
+      <Badge variant={variants[status] || 'warning'}>
+        <Icon size={12} className="mr-1" />
+        {status.charAt(0).toUpperCase() + status.slice(1)}
+      </Badge>
+    )
+  }
 
   return (
-    <div className="p-6 max-w-6xl">
-      <PageHeader title="Invoices" subtitle="Manage billing and invoices" />
+    <div className="min-h-screen">
+      <PageHeader title="Invoicing" />
 
-      {/* Filter Tabs */}
-      <div className="flex gap-1 mb-6 bg-gray-100 rounded-lg p-1 w-fit">
-        {tabs.map((tab) => (
-          <button
-            key={tab.value}
-            onClick={() => setActiveTab(tab.value)}
-            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-              activeTab === tab.value
-                ? "bg-white text-gray-900 shadow-sm"
-                : "text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      <div className="p-6">
+        <div className="flex justify-between items-center mb-6">
+          <h3 className="text-lg font-semibold text-gray-900">
+            {invoices.length} Invoice{invoices.length !== 1 && 's'}
+          </h3>
+          <Button onClick={() => router.push('/invoices/new')}>
+            <Plus size={16} />
+            Create Invoice
+          </Button>
+        </div>
 
-      {/* Table */}
-      <Card>
         {loading ? (
-          <div className="p-8 text-center text-gray-400 text-sm">Loading...</div>
+          <div className="text-center py-12 text-gray-500">Loading...</div>
         ) : invoices.length === 0 ? (
-          <div className="p-6">
-            <EmptyState
-              icon={<FileText size={40} />}
-              title="No invoices found"
-            />
-          </div>
+          <Card>
+            <CardContent>
+              <EmptyState
+                icon={<FileText size={40} />}
+                title="No invoices yet"
+                description="Create your first invoice to start billing clients."
+                actionLabel="Create Invoice"
+                onAction={() => router.push('/invoices/new')}
+              />
+            </CardContent>
+          </Card>
         ) : (
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-100">
-                <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Invoice #</th>
-                <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Date</th>
-                <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Owner</th>
-                <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Property</th>
-                <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Type</th>
-                <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Status</th>
-                <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Amount</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {invoices.map((inv) => (
-                <tr
-                  key={inv.id}
-                  onClick={() => router.push(`/invoices/${inv.id}`)}
-                  className="hover:bg-gray-50 cursor-pointer transition-colors"
-                >
-                  <td className="px-6 py-4 text-sm font-medium text-gray-900">{inv.invoiceNumber}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{formatDate(inv.date)}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{inv.ownerName}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{inv.propertyName}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{inv.type}</td>
-                  <td className="px-6 py-4">
-                    <StatusBadge status={inv.status} />
-                  </td>
-                  <td className="px-6 py-4 text-sm font-semibold text-gray-900 text-right">{formatCurrency(inv.totalAmount)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <Card>
+            <CardContent className="p-0">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">
+                      Invoice
+                    </th>
+                    <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">
+                      Property
+                    </th>
+                    <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">
+                      Client
+                    </th>
+                    <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">
+                      Date
+                    </th>
+                    <th className="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase">
+                      Amount
+                    </th>
+                    <th className="text-center px-6 py-3 text-xs font-medium text-gray-500 uppercase">
+                      Status
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {invoices.map((invoice) => (
+                    <tr
+                      key={invoice.id}
+                      className="hover:bg-gray-50 cursor-pointer"
+                      onClick={() => router.push(`/invoices/${invoice.id}`)}
+                    >
+                      <td className="px-6 py-4 font-mono text-sm">{invoice.invoiceNumber}</td>
+                      <td className="px-6 py-4 font-medium">{invoice.property?.name || 'Unknown'}</td>
+                      <td className="px-6 py-4 text-gray-600">{invoice.property?.ownerName || '-'}</td>
+                      <td className="px-6 py-4 text-gray-600">{formatDate(invoice.invoiceDate)}</td>
+                      <td className="px-6 py-4 text-right font-semibold">
+                        {formatCurrency(invoice.total)}
+                      </td>
+                      <td className="px-6 py-4 text-center">{getStatusBadge(invoice.status)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
         )}
-      </Card>
+      </div>
     </div>
-  );
+  )
 }
