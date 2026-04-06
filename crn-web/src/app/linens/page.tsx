@@ -127,7 +127,29 @@ export default function LinensPage() {
     try {
       const response = await v1Fetch('/api/linens')
       if (response.ok) {
-        setLinenCategories(await response.json())
+        const data = await response.json()
+        // V2 returns flat items array; V1 expected categories with nested items
+        if (Array.isArray(data)) {
+          // Group flat items by category field into V1-style categories
+          const grouped: Record<string, any[]> = {}
+          for (const item of data) {
+            const cat = item.category || 'Uncategorized'
+            if (!grouped[cat]) grouped[cat] = []
+            grouped[cat].push(item)
+          }
+          const categories = Object.entries(grouped).map(([name, items]) => ({
+            id: name,
+            name,
+            items,
+            sortOrder: 0,
+          }))
+          setLinenCategories(categories)
+        } else if (data && typeof data === 'object' && !Array.isArray(data)) {
+          // Already categories format
+          setLinenCategories(Array.isArray(data.categories) ? data.categories : [data])
+        } else {
+          setLinenCategories([])
+        }
       }
     } catch (error) {
       console.error('Failed to fetch linens:', error)
@@ -140,7 +162,20 @@ export default function LinensPage() {
     try {
       const response = await v1Fetch('/api/supplies')
       if (response.ok) {
-        setSupplyCategories(await response.json())
+        const data = await response.json()
+        if (Array.isArray(data)) {
+          const grouped: Record<string, any[]> = {}
+          for (const item of data) {
+            const cat = item.category || 'Uncategorized'
+            if (!grouped[cat]) grouped[cat] = []
+            grouped[cat].push(item)
+          }
+          setSupplyCategories(Object.entries(grouped).map(([name, items]) => ({
+            id: name, name, items, sortOrder: 0,
+          })))
+        } else {
+          setSupplyCategories(Array.isArray(data?.categories) ? data.categories : [])
+        }
       }
     } catch (error) {
       console.error('Failed to fetch supplies:', error)
