@@ -1,307 +1,247 @@
-"use client";
+'use client'
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { api } from "@/lib/api";
-import Link from "next/link";
-import {
-  Building,
-  Search,
-  Plus,
-  MapPin,
-  User,
-  Phone,
-  Mail,
-  Pencil,
-  Trash2,
-  Eye,
-  EyeOff,
-  StickyNote,
-} from "lucide-react";
-import { Card, CardContent } from "@/components/ui/Card";
-import Badge, { StatusBadge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
-import { PageHeader } from "@/components/layout/PageHeader";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { formatCurrency, cn } from "@/lib/utils";
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { Building, MapPin, Plus, User, Phone, Mail, Pencil, Trash2, Eye, EyeOff } from 'lucide-react'
+import Image from 'next/image'
+import v1Fetch from '@/lib/v1-compat'
+import { PageHeader } from '@/components/layout/PageHeader'
+import { Card, CardContent } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import Badge from '@/components/ui/Badge'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { formatCurrency, cn } from '@/lib/utils'
 
-interface Property {
-  id: string;
-  name: string;
-  code: string;
-  address?: string;
-  status: string;
-  ownerId?: string;
-  ownerName?: string;
-  ownerEmail?: string;
-  ownerPhone?: string;
-  owner?: { id: string; name: string; email?: string; phone?: string };
-  defaultFee: number;
-  defaultHouseCutPercent: number;
-  billingType?: string;
-  _count?: { notes: number };
+function toast(msg: string, type: 'success' | 'error' = 'success') {
+  const div = document.createElement('div')
+  div.className = `fixed top-4 right-4 z-50 px-4 py-2 rounded-lg shadow-lg text-white text-sm ${type === 'error' ? 'bg-red-600' : 'bg-green-600'}`
+  div.textContent = msg
+  document.body.appendChild(div)
+  setTimeout(() => div.remove(), 3000)
 }
 
-const statusTabs = [
-  { label: "Active", value: "active" },
-  { label: "Inactive", value: "inactive" },
-  { label: "All", value: "" },
-];
-
-function notify(message: string) {
-  console.log("[CRN]", message);
+interface Property {
+  id: string
+  name: string
+  address: string
+  isActive: boolean
+  ownerId: string | null
+  ownerName: string
+  ownerEmail: string | null
+  ownerPhone: string | null
+  baseRate: number
+  expensePercent: number
+  billingType: string
+  imageUrl: string | null
+  notes: { id: string }[]
 }
 
 export default function PropertiesPage() {
-  const router = useRouter();
-  const [properties, setProperties] = useState<Property[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("active");
+  const router = useRouter()
+  const [properties, setProperties] = useState<Property[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [showInactive, setShowInactive] = useState(false)
 
   useEffect(() => {
-    fetchProperties();
-  }, [statusFilter, search]);
+    fetchProperties()
+  }, [showInactive])
 
-  const fetchProperties = () => {
-    setLoading(true);
-    api
-      .get<{ properties: Property[] }>("/properties", {
-        status: statusFilter || undefined,
-        search: search || undefined,
-      })
-      .then((data) => setProperties(data.properties))
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  };
+  const fetchProperties = async () => {
+    try {
+      const url = showInactive ? '/api/properties?includeInactive=true' : '/api/properties'
+      const response = await v1Fetch(url)
+      if (response.ok) {
+        const data = await response.json()
+        setProperties(data)
+      }
+    } catch (error) {
+      console.error('Failed to fetch properties:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleAdd = () => {
+    router.push('/properties/new')
+  }
+
+  const handleEdit = (propertyId: string) => {
+    router.push(`/properties/${propertyId}`)
+  }
 
   const handleDelete = async (property: Property, e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (
-      !confirm(
-        `Delete "${property.name}"? This will also delete all associated jobs and invoices.`
-      )
-    )
-      return;
+    e.stopPropagation()
+    if (!confirm(`Delete "${property.name}"? This will also delete all associated jobs and invoices.`)) return
 
     try {
-      await api.delete(`/properties/${property.id}`);
-      notify(`${property.name} deleted`);
-      fetchProperties();
+      const response = await v1Fetch(`/api/properties/${property.id}`, {
+        method: 'DELETE',
+      })
+
+      if (response.ok) {
+        toast(`${property.name} deleted`)
+        fetchProperties()
+      } else {
+        toast('Failed to delete property', 'error')
+      }
     } catch (error) {
-      notify("Failed to delete property");
+      toast('Failed to delete property', 'error')
     }
-  };
-
-  const activeCount = properties.filter((p) => p.status === "active").length;
-
-  const resolveOwner = (prop: Property) => {
-    if (prop.owner) return prop.owner;
-    return {
-      name: prop.ownerName || "No owner",
-      email: prop.ownerEmail,
-      phone: prop.ownerPhone,
-    };
-  };
+  }
 
   return (
-    <div className="p-6 max-w-6xl">
-      <PageHeader
-        title="Properties"
-        subtitle={`${activeCount} active propert${activeCount !== 1 ? "ies" : "y"}`}
-        actions={
-          <Link href="/properties/new">
-            <Button variant="primary">
-              <Plus size={16} />
-              Add Property
-            </Button>
-          </Link>
-        }
-      />
+    <div className="min-h-screen">
+      <PageHeader title="Properties" />
 
-      {/* Search & Filter */}
-      <div className="flex items-center gap-4 mb-6">
-        <div className="relative flex-1 max-w-sm">
-          <Search
-            size={16}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-          />
-          <input
-            type="text"
-            placeholder="Search properties..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-          />
-        </div>
-        <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-          {statusTabs.map((tab) => (
+      <div className="p-6">
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center gap-4">
+            <h3 className="text-lg font-semibold text-gray-900">
+              {properties.filter(p => p.isActive).length} Active Properties
+            </h3>
             <button
-              key={tab.value}
-              onClick={() => setStatusFilter(tab.value)}
-              className={cn(
-                "px-4 py-2 text-sm font-medium rounded-md transition-colors",
-                statusFilter === tab.value
-                  ? "bg-white text-gray-900 shadow-sm"
-                  : "text-gray-500 hover:text-gray-700"
-              )}
+              onClick={() => setShowInactive(!showInactive)}
+              className={`flex items-center gap-2 text-sm px-3 py-1.5 rounded-full transition-colors ${
+                showInactive
+                  ? 'bg-gray-200 text-gray-700'
+                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+              }`}
             >
-              {tab.label}
+              {showInactive ? <EyeOff size={14} /> : <Eye size={14} />}
+              {showInactive ? 'Hide Inactive' : 'Show Inactive'}
             </button>
-          ))}
+          </div>
+          <Button onClick={handleAdd}>
+            <Plus size={16} />
+            Add Property
+          </Button>
         </div>
-      </div>
 
-      {/* Property Cards Grid */}
-      {loading ? (
-        <p className="text-gray-400 text-sm">Loading...</p>
-      ) : properties.length === 0 ? (
-        <Card>
-          <CardContent>
-            <EmptyState
-              icon={<Building size={40} />}
-              title="No properties found"
-              description="Add your first property to start managing jobs and invoices."
-              action={{
-                label: "Add Property",
-                onClick: () => router.push("/properties/new"),
-              }}
-            />
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {properties.map((prop) => {
-            const owner = resolveOwner(prop);
-            const notesCount = prop._count?.notes ?? 0;
-            const isInactive = prop.status !== "active";
-
-            return (
-              <Link key={prop.id} href={`/properties/${prop.id}`}>
-                <Card
-                  className={cn(
-                    "hover:shadow-md transition-all cursor-pointer overflow-hidden h-full",
-                    isInactive && "opacity-60 bg-gray-50"
-                  )}
-                >
-                  {/* Placeholder for property image */}
+        {isLoading ? (
+          <div className="text-center py-12 text-gray-500">Loading...</div>
+        ) : properties.length === 0 ? (
+          <Card>
+            <CardContent>
+              <EmptyState
+                icon={<Building size={40} />}
+                title="No properties yet"
+                description="Add your first property to start managing jobs and invoices."
+                actionLabel="Add Property"
+                onAction={handleAdd}
+              />
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {properties.map((property) => (
+              <Card
+                key={property.id}
+                className={`hover:shadow-md transition-shadow cursor-pointer overflow-hidden ${
+                  !property.isActive ? 'opacity-60 bg-gray-50' : ''
+                }`}
+                onClick={() => handleEdit(property.id)}
+              >
+                {/* Property Image — V1 used Vercel Blob URLs which won't load; show placeholder stripe */}
+                {property.imageUrl ? (
+                  <div className="relative h-40 w-full bg-gray-200">
+                    <Image
+                      src={property.imageUrl}
+                      alt={property.name}
+                      fill
+                      className={`object-cover ${!property.isActive ? 'grayscale' : ''}`}
+                      onError={(e) => {
+                        // Hide broken image, show gradient placeholder
+                        (e.target as HTMLImageElement).style.display = 'none'
+                      }}
+                    />
+                    {/* Fallback gradient shown behind image */}
+                    <div className="absolute inset-0 bg-gradient-to-br from-blue-400 to-blue-600 -z-10" />
+                  </div>
+                ) : (
                   <div className="h-2 bg-gradient-to-r from-blue-500 to-blue-600" />
+                )}
 
-                  <CardContent>
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4
-                            className={cn(
-                              "font-semibold",
-                              isInactive ? "text-gray-500" : "text-gray-900"
-                            )}
-                          >
-                            {prop.name}
-                          </h4>
-                          <StatusBadge status={prop.status} />
-                        </div>
-                        <p className="text-xs text-gray-400 font-mono">
-                          {prop.code}
-                        </p>
-                        {prop.address && (
-                          <div className="flex items-center gap-1 text-sm text-gray-500 mt-1">
-                            <MapPin size={14} />
-                            <span className="line-clamp-1">{prop.address}</span>
-                          </div>
+                <CardContent className={property.imageUrl ? 'pt-4' : ''}>
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className={`font-semibold ${property.isActive ? 'text-gray-900' : 'text-gray-500'}`}>
+                          {property.name}
+                        </h4>
+                        {!property.isActive && (
+                          <Badge variant="default">Inactive</Badge>
                         )}
                       </div>
-                      {!isInactive && prop.billingType && (
-                        <Badge
-                          variant={
-                            prop.billingType === "monthly"
-                              ? "warning"
-                              : "info"
-                          }
-                        >
-                          {prop.billingType === "monthly"
-                            ? "Monthly"
-                            : "Per Job"}
-                        </Badge>
-                      )}
-                    </div>
-
-                    {/* Fee & House Cut */}
-                    <div className="flex items-center gap-4 mb-4">
-                      <div>
-                        <p className="text-2xl font-bold text-gray-900">
-                          {formatCurrency(prop.defaultFee)}
-                        </p>
-                        <p className="text-xs text-gray-400">Default Fee</p>
-                      </div>
-                      <div>
-                        <p className="text-lg font-semibold text-gray-900">
-                          {prop.defaultHouseCutPercent}%
-                        </p>
-                        <p className="text-xs text-gray-400">House Cut</p>
+                      <div className="flex items-center gap-1 text-sm text-gray-500 mt-1">
+                        <MapPin size={14} />
+                        {property.address}
                       </div>
                     </div>
+                    {property.isActive && (
+                      <Badge variant={property.billingType === 'monthly' ? 'warning' : 'info'}>
+                        {property.billingType === 'monthly' ? 'Monthly' : 'Per Job'}
+                      </Badge>
+                    )}
+                  </div>
 
-                    {/* Owner Info */}
-                    <div className="border-t pt-3 space-y-2 text-sm">
+                  <div className="text-2xl font-bold text-gray-900 mb-4">
+                    {formatCurrency(property.baseRate)}
+                  </div>
+
+                  <div className="border-t pt-3 space-y-2 text-sm">
+                    <div className="flex items-center gap-2 text-gray-600">
+                      <User size={14} />
+                      {property.ownerName}
+                    </div>
+                    {property.ownerPhone && (
                       <div className="flex items-center gap-2 text-gray-600">
-                        <User size={14} />
-                        {owner.name}
-                      </div>
-                      {owner.phone && (
-                        <div className="flex items-center gap-2 text-gray-600">
-                          <Phone size={14} />
-                          {owner.phone}
-                        </div>
-                      )}
-                      {owner.email && (
-                        <div className="flex items-center gap-2 text-gray-600">
-                          <Mail size={14} />
-                          {owner.email}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Notes indicator */}
-                    {notesCount > 0 && (
-                      <div className="mt-3 p-2 bg-amber-50 rounded-lg text-sm text-amber-700 flex items-center gap-2">
-                        <StickyNote size={14} />
-                        {notesCount} active note{notesCount !== 1 && "s"}
+                        <Phone size={14} />
+                        {property.ownerPhone}
                       </div>
                     )}
+                    {property.ownerEmail && (
+                      <div className="flex items-center gap-2 text-gray-600">
+                        <Mail size={14} />
+                        {property.ownerEmail}
+                      </div>
+                    )}
+                  </div>
 
-                    {/* Action Buttons */}
-                    <div className="mt-3 pt-3 border-t flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="flex-1"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          router.push(`/properties/${prop.id}`);
-                        }}
-                      >
-                        <Pencil size={14} />
-                        Edit
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-red-600 hover:bg-red-50"
-                        onClick={(e) => handleDelete(prop, e)}
-                      >
-                        <Trash2 size={14} />
-                      </Button>
+                  {property.notes && property.notes.length > 0 && (
+                    <div className="mt-3 p-2 bg-amber-50 rounded-lg text-sm text-amber-700">
+                      {property.notes.length} active note{property.notes.length !== 1 && 's'}
                     </div>
-                  </CardContent>
-                </Card>
-              </Link>
-            );
-          })}
-        </div>
-      )}
+                  )}
+
+                  {/* Action Buttons */}
+                  <div className="mt-3 pt-3 border-t flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="flex-1"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleEdit(property.id)
+                      }}
+                    >
+                      <Pencil size={14} />
+                      Edit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-red-600 hover:bg-red-50"
+                      onClick={(e) => handleDelete(property, e)}
+                    >
+                      <Trash2 size={14} />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
-  );
+  )
 }

@@ -16,19 +16,21 @@ import {
   Settings,
   Car,
   RefreshCw,
+  UserCircle,
+  StickyNote,
+  DollarSign,
 } from "lucide-react";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/calendar", label: "Calendar", icon: Calendar },
-  { href: "/jobs", label: "Jobs", icon: ClipboardList },
+  { href: "/jobs", label: "Jobs & Payments", icon: DollarSign },
+  { href: "/owners", label: "Owners", icon: UserCircle },
   { href: "/properties", label: "Properties", icon: Building },
   { href: "/team", label: "Team", icon: Users },
-  { href: "/linens", label: "Linens", icon: Package },
+  { href: "/linens", label: "Linens & Supplies", icon: Package },
   { href: "/invoices", label: "Invoicing", icon: FileText },
-  { href: "/expenses", label: "Expenses", icon: Receipt },
-  { href: "/mileage", label: "Mileage", icon: Car },
-  { href: "/pay-periods", label: "Pay Periods", icon: Wallet },
+  { href: "/notes", label: "Notes", icon: StickyNote },
   { href: "/reports", label: "Reports", icon: TrendingUp },
 ];
 
