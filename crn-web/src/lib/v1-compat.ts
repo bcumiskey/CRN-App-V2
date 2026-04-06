@@ -186,6 +186,66 @@ function generateColor(name: string): string {
   return colors[Math.abs(hash) % colors.length];
 }
 
+// ── Combined dashboard handler ──────────────────────────────────
+
+async function handleDashboardFetch(): Promise<Response> {
+  try {
+    const [statsRes, todayRes, upcomingRes] = await Promise.allSettled([
+      fetch(`${API_BASE}/api/dashboard/stats`, { headers: { "Content-Type": "application/json" } }),
+      fetch(`${API_BASE}/api/dashboard/today`, { headers: { "Content-Type": "application/json" } }),
+      fetch(`${API_BASE}/api/jobs?status=SCHEDULED&limit=10`, { headers: { "Content-Type": "application/json" } }),
+    ]);
+
+    const stats = statsRes.status === "fulfilled" && statsRes.value.ok
+      ? await statsRes.value.json()
+      : { jobsThisMonth: 0, jobsCompleted: 0, revenueThisMonth: 0, outstandingInvoices: 0, outstandingAmount: 0 };
+
+    const todayData = todayRes.status === "fulfilled" && todayRes.value.ok
+      ? await todayRes.value.json()
+      : { jobs: [] };
+
+    const upcomingData = upcomingRes.status === "fulfilled" && upcomingRes.value.ok
+      ? await upcomingRes.value.json()
+      : { jobs: [] };
+
+    // Map to V1's expected shape
+    const combined = {
+      stats: {
+        monthlyRevenue: stats.revenueThisMonth ?? 0,
+        pendingFromClients: stats.outstandingAmount ?? 0,
+        owedToTeam: 0, // V2 computes this differently
+        draftInvoices: stats.outstandingInvoices ?? 0,
+        lowStockItems: 0, // TODO: compute from linens
+      },
+      todayJobs: ((todayData.jobs || todayData) as any[]).map((j: any) => ({
+        ...j,
+        time: j.scheduledTime ?? j.time,
+        completed: j.status === "COMPLETED" || j.completed === true,
+        assignments: (j.assignments || []).map((a: any) => ({
+          ...a,
+          teamMember: a.user ?? a.teamMember ?? { name: "Unknown" },
+        })),
+      })),
+      upcomingJobs: ((upcomingData.jobs || upcomingData) as any[]).map((j: any) => ({
+        ...j,
+        date: j.scheduledDate ?? j.date,
+      })),
+    };
+
+    return new Response(JSON.stringify(combined), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (err) {
+    console.error("Dashboard fetch failed:", err);
+    return new Response(JSON.stringify({
+      stats: { monthlyRevenue: 0, pendingFromClients: 0, owedToTeam: 0, draftInvoices: 0, lowStockItems: 0 },
+      todayJobs: [],
+      upcomingJobs: [],
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }
+}
+
 // ── Main fetch wrapper ──────────────────────────────────────────
 
 export async function v1Fetch(
@@ -195,6 +255,12 @@ export async function v1Fetch(
   // Extract the API path
   const path = url.startsWith("/api") ? url : `/api${url}`;
   const [pathPart, queryString] = path.split("?");
+
+  // Special handler: V1's single /api/dashboard → V2's split endpoints
+  if (pathPart === "/api/dashboard" && (!options?.method || options.method === "GET")) {
+    return handleDashboardFetch();
+  }
+
   const fullUrl = `${API_BASE}${pathPart}${queryString ? "?" + queryString : ""}`;
 
   // Map request body for POST/PATCH/PUT
