@@ -275,10 +275,21 @@ export default function ReportsPage() {
         ]);
       setPnl(pnlRes);
       setRevenueByMonth((monthRes as any).items ?? (monthRes as any).breakdown ?? monthRes ?? []);
-      setWorkerEarnings(workersRes ?? []);
-      setCompletionRate(completionRes);
+      // Worker earnings: API returns {workers: [...]} not a plain array
+      setWorkerEarnings(Array.isArray(workersRes) ? workersRes : (workersRes as any)?.workers ?? []);
+      // Completion rate: API returns monthlyTrend not trend
+      setCompletionRate({ ...completionRes, trend: (completionRes as any).monthlyTrend ?? (completionRes as any).trend ?? [] } as any);
       setJobVolume(volumeRes);
-      setArAging(arRes);
+      // AR aging: API returns {buckets, totalOutstanding} — map to expected shape
+      const aging = arRes as any;
+      setArAging({
+        current: aging.buckets?.current ?? aging.current ?? 0,
+        days1to30: aging.buckets?.days1to30 ?? aging.days1to30 ?? 0,
+        days31to60: aging.buckets?.days31to60 ?? aging.days31to60 ?? 0,
+        days60plus: aging.buckets?.days60plus ?? aging.days60plus ?? 0,
+        totalOutstanding: aging.totalOutstanding ?? 0,
+        invoices: aging.invoices ?? [],
+      } as any);
     } catch (err) {
       console.error("Failed to fetch overview:", err);
       setError("Failed to load overview data. Please try again.");
@@ -295,7 +306,7 @@ export default function ReportsPage() {
         api.get<{ items: RevenueItem[] }>("/reports/revenue", { ...params, groupBy: "type" }),
         api.get<{ items: RevenueItem[] }>("/reports/revenue", { ...params, groupBy: "owner" }),
       ]);
-      setRevenueByProperty(propRes ?? []);
+      setRevenueByProperty(Array.isArray(propRes) ? propRes : (propRes as any)?.properties ?? []);
       setRevenueByType((typeRes as any).items ?? (typeRes as any).breakdown ?? typeRes ?? []);
       setRevenueByOwner((ownerRes as any).items ?? (ownerRes as any).breakdown ?? ownerRes ?? []);
     } catch (err) {
@@ -312,8 +323,8 @@ export default function ReportsPage() {
         api.get<WorkerEarning[]>("/reports/worker-earnings", params),
         api.get<Ten99Entry[]>("/reports/1099-summary", params),
       ]);
-      setWorkerEarnings(workersRes ?? []);
-      setTen99Summary(ten99Res ?? []);
+      setWorkerEarnings(Array.isArray(workersRes) ? workersRes : (workersRes as any)?.workers ?? []);
+      setTen99Summary(Array.isArray(ten99Res) ? ten99Res : (ten99Res as any)?.workers ?? (ten99Res as any)?.entries ?? []);
     } catch (err) {
       console.error("Failed to fetch team:", err);
     } finally {
@@ -329,8 +340,8 @@ export default function ReportsPage() {
         api.get<Ten99Entry[]>("/reports/1099-summary", params),
         api.get<PnlData>("/reports/pnl", params),
       ]);
-      setScheduleCData(schedRes ?? []);
-      setTen99Summary(ten99Res ?? []);
+      setScheduleCData(Array.isArray(schedRes) ? schedRes : (schedRes as any)?.lines ?? (schedRes as any)?.items ?? []);
+      setTen99Summary(Array.isArray(ten99Res) ? ten99Res : (ten99Res as any)?.workers ?? (ten99Res as any)?.entries ?? []);
       setPnl(pnlRes);
     } catch (err) {
       console.error("Failed to fetch tax:", err);
