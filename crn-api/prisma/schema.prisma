@@ -193,6 +193,8 @@ model Property {
   wifiPassword        String?
   trashDay            String?
   specialInstructions String?
+  imageUrl            String?
+  color               String?  // Calendar display color (hex)
 
   // Calendar sync (Phase 7)
   aliases             String[] @default([])
