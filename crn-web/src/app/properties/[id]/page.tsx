@@ -79,14 +79,23 @@ interface Property {
   code: string;
   address?: string;
   status: string;
-  defaultFee: number;
-  defaultHouseCutPercent: number;
+  // V1 compat names (mapped by v1Fetch from V2's defaultJobFee/houseCutPercent)
+  baseRate: number;
+  expensePercent: number;
+  // V2 native names
+  defaultJobFee?: number;
+  houseCutPercent?: number;
+  // Access
+  accessInstructions?: string;
   lockboxCode?: string;
   wifiName?: string;
   wifiPassword?: string;
+  parkingNotes?: string;
   parkingInstructions?: string;
   trashDay?: string;
   specialInstructions?: string;
+  imageUrl?: string;
+  color?: string;
   billingType?: string;
   ownerId?: string;
   ownerName?: string;
@@ -95,6 +104,9 @@ interface Property {
   owner?: Owner;
   rooms: Room[];
   recentJobs?: RecentJob[];
+  checklists?: any[];
+  standingInstructions?: any[];
+  propertyNotes?: any[];
 }
 
 // ── Helpers ────────────────────────────────────────────────
@@ -524,13 +536,13 @@ export default function PropertyDetailPage() {
                     label="Default Fee"
                     value={String(property.baseRate)}
                     type="number"
-                    onSave={(v) => updateField("defaultFee", parseFloat(v) || 0)}
+                    onSave={(v) => updateField("baseRate", parseFloat(v) || 0)}
                   />
                   <InlineField
                     label="House Cut %"
                     value={String(property.expensePercent)}
                     type="number"
-                    onSave={(v) => updateField("defaultHouseCutPercent", parseFloat(v) || 0)}
+                    onSave={(v) => updateField("expensePercent", parseFloat(v) || 0)}
                   />
                   <InlineField
                     label="Name"
