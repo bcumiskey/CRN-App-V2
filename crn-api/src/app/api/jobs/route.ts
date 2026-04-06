@@ -19,19 +19,36 @@ export async function GET(request: NextRequest) {
   const propertyId = params.get("propertyId");
   const startDate = params.get("startDate");
   const endDate = params.get("endDate");
+  const month = params.get("month");
+  const year = params.get("year");
   const clientPaid = params.get("clientPaid");
   const teamPaid = params.get("teamPaid");
-  const limit = Math.min(Number(params.get("limit") || 50), 200);
+  const limit = Math.min(Number(params.get("limit") || 500), 500);
   const offset = Number(params.get("offset") || 0);
 
   const where: Record<string, unknown> = {};
-  if (status) where.status = status;
+  if (status) {
+    // Support comma-separated status values
+    const statuses = status.split(",").map(s => s.trim()).filter(Boolean);
+    if (statuses.length === 1) where.status = statuses[0];
+    else if (statuses.length > 1) where.status = { in: statuses };
+  }
   if (propertyId) where.propertyId = propertyId;
   if (clientPaid !== null && clientPaid !== undefined && clientPaid !== "")
     where.clientPaid = clientPaid === "true";
   if (teamPaid !== null && teamPaid !== undefined && teamPaid !== "")
     where.teamPaid = teamPaid === "true";
-  if (startDate || endDate) {
+
+  // Date filtering: support month/year (V1) or startDate/endDate (V2)
+  if (month && year) {
+    const m = parseInt(month);
+    const y = parseInt(year);
+    const startOfMonth = `${y}-${String(m).padStart(2, "0")}-01`;
+    const endOfMonth = m === 12
+      ? `${y + 1}-01-01`
+      : `${y}-${String(m + 1).padStart(2, "0")}-01`;
+    where.scheduledDate = { gte: startOfMonth, lt: endOfMonth };
+  } else if (startDate || endDate) {
     where.scheduledDate = {
       ...(startDate ? { gte: startDate } : {}),
       ...(endDate ? { lte: endDate } : {}),
