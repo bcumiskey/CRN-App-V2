@@ -208,14 +208,14 @@ async function handleDashboardFetch(): Promise<Response> {
       ? await upcomingRes.value.json()
       : { jobs: [] };
 
-    // Map to V1's expected shape
+    // Map to V1's expected shape — stats endpoint now returns V1-compatible fields directly
     const combined = {
       stats: {
-        monthlyRevenue: stats.revenueThisMonth ?? 0,
-        pendingFromClients: stats.outstandingAmount ?? 0,
-        owedToTeam: 0, // V2 computes this differently
-        draftInvoices: stats.outstandingInvoices ?? 0,
-        lowStockItems: 0, // TODO: compute from linens
+        monthlyRevenue: stats.monthlyRevenue ?? stats.revenueThisMonth ?? 0,
+        pendingFromClients: stats.pendingFromClients ?? 0,
+        owedToTeam: stats.owedToTeam ?? 0,
+        draftInvoices: stats.draftInvoices ?? 0,
+        lowStockItems: stats.lowStockItems ?? 0,
       },
       todayJobs: ((todayData.jobs || todayData) as any[]).map((j: any) => ({
         ...j,
