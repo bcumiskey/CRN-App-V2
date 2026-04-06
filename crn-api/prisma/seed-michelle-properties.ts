@@ -5,16 +5,17 @@ const prisma = new PrismaClient();
 async function main() {
   console.log("🏠 Seeding Michelle's property data...\n");
 
-  // Find Michelle's properties
-  const gable = await prisma.property.findUnique({ where: { code: "GABLE" } });
-  const dutch = await prisma.property.findUnique({ where: { code: "DUTCH" } });
-  const bbr = await prisma.property.findUnique({ where: { code: "BBR" } });
-  const stones = await prisma.property.findUnique({ where: { code: "STONES" } });
+  // Find Michelle's properties by name (codes vary between seed and migration)
+  const gable = await prisma.property.findFirst({ where: { name: { contains: "Gable" } } });
+  const dutch = await prisma.property.findFirst({ where: { name: { contains: "Dutch" } } });
+  const bbr = await prisma.property.findFirst({ where: { name: { contains: "Gambrel" } } });
+  const stones = await prisma.property.findFirst({ where: { name: { contains: "Stone" } } });
 
   if (!gable || !dutch || !bbr || !stones) {
-    console.error("❌ Missing properties. Run main seed first.");
+    console.error("❌ Missing properties. Found:", { gable: gable?.name, dutch: dutch?.name, bbr: bbr?.name, stones: stones?.name });
     process.exit(1);
   }
+  console.log(`  Found: ${gable.name}, ${dutch.name}, ${bbr.name}, ${stones.name}`);
 
   // ── GABLE ROOMS ──────────────────────────────────────────────
   console.log("  Creating Gable rooms...");
