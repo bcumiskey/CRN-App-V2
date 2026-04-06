@@ -120,7 +120,7 @@ type Tab = (typeof TABS)[number];
 // ── Helpers ────────────────────────────────────────────────────────────
 
 function formatPct(n: number): string {
-  return `${n.toFixed(1)}%`;
+  return `${(n ?? 0).toFixed(1)}%`;
 }
 
 function formatCompact(n: number): string {
@@ -514,11 +514,11 @@ function OverviewTab({
                 <span className="text-sm font-medium">Gross Revenue</span>
               </div>
               <p className="text-3xl font-bold text-gray-900">
-                {formatCurrency(pnl.grossRevenue)}
+                {formatCurrency(pnl?.grossRevenue ?? 0)}
               </p>
               {jobVolume && (
                 <p className="text-sm text-gray-500 mt-1">
-                  {jobVolume.totalJobs} jobs ({formatCurrency(jobVolume.avgPerDay)}/day avg)
+                  {jobVolume?.totalJobs ?? 0} jobs ({formatCurrency(jobVolume.avgPerDay)}/day avg)
                 </p>
               )}
             </CardContent>
@@ -531,10 +531,10 @@ function OverviewTab({
                 <span className="text-sm font-medium">Net Revenue</span>
               </div>
               <p className="text-3xl font-bold text-gray-900">
-                {formatCurrency(pnl.netRevenue)}
+                {formatCurrency(pnl?.netRevenue ?? 0)}
               </p>
               <p className="text-sm text-gray-500 mt-1">
-                After {formatCurrency(pnl.houseCut)} house cut
+                After {formatCurrency(pnl?.houseCut ?? 0)} house cut
               </p>
             </CardContent>
           </Card>
@@ -542,7 +542,7 @@ function OverviewTab({
           <Card
             className={cn(
               "bg-gradient-to-br to-white",
-              pnl.netProfit >= 0
+              pnl?.netProfit ?? 0 >= 0
                 ? "from-emerald-50 border-emerald-200"
                 : "from-red-50 border-red-200"
             )}
@@ -551,14 +551,14 @@ function OverviewTab({
               <div
                 className={cn(
                   "flex items-center gap-2 mb-1",
-                  pnl.netProfit >= 0 ? "text-emerald-600" : "text-red-600"
+                  pnl?.netProfit ?? 0 >= 0 ? "text-emerald-600" : "text-red-600"
                 )}
               >
-                {pnl.netProfit >= 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
+                {pnl?.netProfit ?? 0 >= 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
                 <span className="text-sm font-medium">Net Profit</span>
               </div>
               <p className="text-3xl font-bold text-gray-900">
-                {formatCurrency(pnl.netProfit)}
+                {formatCurrency(pnl?.netProfit ?? 0)}
               </p>
               <p className="text-sm text-gray-500 mt-1">
                 After {formatCurrency(pnl.operatingExpenses.total)} expenses
@@ -581,17 +581,17 @@ function OverviewTab({
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
               <div className="text-center p-4 bg-blue-50 rounded-lg">
                 <p className="text-sm font-medium text-blue-600 mb-1">Worker Pool</p>
-                <p className="text-2xl font-bold">{formatCurrency(pnl.buckets.workerPool)}</p>
+                <p className="text-2xl font-bold">{formatCurrency(pnl?.buckets?.workerPool ?? 0)}</p>
               </div>
               <div className="text-center p-4 bg-amber-50 rounded-lg">
                 <p className="text-sm font-medium text-amber-600 mb-1">Business Expenses</p>
                 <p className="text-2xl font-bold">
-                  {formatCurrency(pnl.buckets.businessExpense)}
+                  {formatCurrency(pnl?.buckets?.businessExpense ?? 0)}
                 </p>
               </div>
               <div className="text-center p-4 bg-green-50 rounded-lg">
                 <p className="text-sm font-medium text-green-600 mb-1">Owner Profit</p>
-                <p className="text-2xl font-bold">{formatCurrency(pnl.buckets.ownerProfit)}</p>
+                <p className="text-2xl font-bold">{formatCurrency(pnl?.buckets?.ownerProfit ?? 0)}</p>
               </div>
             </div>
 
@@ -750,12 +750,12 @@ function OverviewTab({
             <CardContent>
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div className="text-center p-3 bg-blue-50 rounded-lg">
-                  <p className="text-2xl font-bold text-blue-700">{jobVolume.totalJobs}</p>
+                  <p className="text-2xl font-bold text-blue-700">{jobVolume?.totalJobs ?? 0}</p>
                   <p className="text-xs text-gray-500">Total Jobs</p>
                 </div>
                 <div className="text-center p-3 bg-purple-50 rounded-lg">
                   <p className="text-2xl font-bold text-purple-700">
-                    {jobVolume.avgPerDay.toFixed(1)}
+                    {(jobVolume?.avgPerDay ?? 0).toFixed(1)}
                   </p>
                   <p className="text-xs text-gray-500">Avg/Day</p>
                 </div>
@@ -805,7 +805,7 @@ function OverviewTab({
             <CardContent>
               <div className="text-center mb-4">
                 <p className="text-3xl font-bold text-gray-900">
-                  {formatCurrency(arAging.totalOutstanding)}
+                  {formatCurrency(arAging?.totalOutstanding ?? 0)}
                 </p>
                 <p className="text-sm text-gray-500">Total Outstanding</p>
               </div>
@@ -1393,7 +1393,7 @@ function TaxTab({
             <div>
               <p className="text-sm text-indigo-600 font-medium">Gross Revenue</p>
               <p className="text-xl font-bold text-gray-900">
-                {formatCurrency(pnl.grossRevenue)}
+                {formatCurrency(pnl?.grossRevenue ?? 0)}
               </p>
             </div>
             <div>
@@ -1407,10 +1407,10 @@ function TaxTab({
               <p
                 className={cn(
                   "text-xl font-bold",
-                  pnl.netProfit >= 0 ? "text-green-700" : "text-red-700"
+                  pnl?.netProfit ?? 0 >= 0 ? "text-green-700" : "text-red-700"
                 )}
               >
-                {formatCurrency(pnl.netProfit)}
+                {formatCurrency(pnl?.netProfit ?? 0)}
               </p>
             </div>
             <div>
@@ -1418,7 +1418,7 @@ function TaxTab({
                 Est. SE Tax (15.3%)
               </p>
               <p className="text-xl font-bold text-gray-900">
-                {formatCurrency(Math.max(pnl.netProfit * 0.153, 0))}
+                {formatCurrency(Math.max(pnl?.netProfit ?? 0 * 0.153, 0))}
               </p>
             </div>
           </div>
