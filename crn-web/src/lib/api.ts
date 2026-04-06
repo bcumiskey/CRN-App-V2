@@ -1,4 +1,4 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://crn-app-v2.vercel.app";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://crn-api.vercel.app";
 
 interface FetchOptions extends Omit<RequestInit, "body"> {
   body?: unknown;
