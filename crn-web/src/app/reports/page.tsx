@@ -274,7 +274,13 @@ export default function ReportsPage() {
           api.get<ArAging>("/reports/ar-aging", params),
         ]);
       setPnl(pnlRes);
-      setRevenueByMonth((monthRes as any).items ?? (monthRes as any).breakdown ?? monthRes ?? []);
+      const rawMonths = (monthRes as any).items ?? (monthRes as any).breakdown ?? monthRes ?? [];
+      setRevenueByMonth(rawMonths.map((m: any) => ({
+        label: m.label ?? m.month ?? m.name ?? "Unknown",
+        revenue: m.revenue ?? m.grossRevenue ?? m.totalRevenue ?? 0,
+        jobCount: m.jobCount ?? m.jobs ?? m.count ?? 0,
+        avgPerJob: m.avgPerJob ?? (m.jobs ? (m.grossRevenue ?? 0) / m.jobs : 0),
+      })));
       // Worker earnings: API returns {workers: [...]} not a plain array
       setWorkerEarnings(Array.isArray(workersRes) ? workersRes : (workersRes as any)?.workers ?? []);
       // Completion rate: API returns monthlyTrend not trend
@@ -307,8 +313,14 @@ export default function ReportsPage() {
         api.get<{ items: RevenueItem[] }>("/reports/revenue", { ...params, groupBy: "owner" }),
       ]);
       setRevenueByProperty(Array.isArray(propRes) ? propRes : (propRes as any)?.properties ?? []);
-      setRevenueByType((typeRes as any).items ?? (typeRes as any).breakdown ?? typeRes ?? []);
-      setRevenueByOwner((ownerRes as any).items ?? (ownerRes as any).breakdown ?? ownerRes ?? []);
+      const mapRevItems = (arr: any[]) => arr.map((m: any) => ({
+        label: m.label ?? m.type ?? m.owner ?? m.name ?? m.month ?? "Unknown",
+        revenue: m.revenue ?? m.grossRevenue ?? m.totalRevenue ?? 0,
+        jobCount: m.jobCount ?? m.jobs ?? m.count ?? 0,
+        avgPerJob: m.avgPerJob ?? 0,
+      }));
+      setRevenueByType(mapRevItems((typeRes as any).items ?? (typeRes as any).breakdown ?? typeRes ?? []));
+      setRevenueByOwner(mapRevItems((ownerRes as any).items ?? (ownerRes as any).breakdown ?? ownerRes ?? []));
     } catch (err) {
       console.error("Failed to fetch revenue:", err);
     } finally {
@@ -858,7 +870,7 @@ function OverviewTab({
                 <tbody className="divide-y divide-gray-50">
                   {workerEarnings.slice(0, 8).map((w) => (
                     <tr key={w.userId} className="hover:bg-gray-50">
-                      <td className="px-4 py-2.5 font-medium text-gray-900">{w.userName}</td>
+                      <td className="px-4 py-2.5 font-medium text-gray-900">{w.userName ?? w.name}</td>
                       <td className="px-4 py-2.5 text-right text-gray-600">{w.jobsWorked}</td>
                       <td className="px-4 py-2.5 text-right font-medium">
                         {formatCurrency(w.totalPay)}
@@ -1226,7 +1238,7 @@ function TeamTab({
                 <tbody className="divide-y divide-gray-50">
                   {earningsSort.sorted.map((w) => (
                     <tr key={w.userId} className="hover:bg-gray-50">
-                      <td className="px-4 py-2.5 font-medium text-gray-900">{w.userName}</td>
+                      <td className="px-4 py-2.5 font-medium text-gray-900">{w.userName ?? w.name}</td>
                       <td className="px-3 py-2.5 text-right text-gray-600">{w.jobsWorked}</td>
                       <td className="px-3 py-2.5 text-right text-gray-600">
                         {w.totalShares.toFixed(1)}
@@ -1324,7 +1336,7 @@ function TeamTab({
                 <tbody className="divide-y divide-gray-50">
                   {ten99Summary.map((e) => (
                     <tr key={e.userId} className="hover:bg-gray-50">
-                      <td className="px-4 py-2.5 font-medium text-gray-900">{e.userName}</td>
+                      <td className="px-4 py-2.5 font-medium text-gray-900">{e.userName ?? e.name}</td>
                       <td className="px-3 py-2.5 text-right font-medium">
                         {formatCurrency(e.totalPaid)}
                       </td>
@@ -1598,7 +1610,7 @@ function TaxTab({
                         )}
                       >
                         <td className="px-4 py-2.5 font-medium text-gray-900">
-                          {e.userName}
+                          {e.userName ?? e.name}
                         </td>
                         <td className="px-3 py-2.5 text-right font-medium">
                           {formatCurrency(e.totalPaid)}
