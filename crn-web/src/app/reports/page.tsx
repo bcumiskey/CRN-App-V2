@@ -289,10 +289,10 @@ export default function ReportsPage() {
       // AR aging: API returns {buckets, totalOutstanding} — map to expected shape
       const aging = arRes as any;
       setArAging({
-        current: aging.buckets?.current ?? aging.current ?? 0,
-        days1to30: aging.buckets?.days1to30 ?? aging.days1to30 ?? 0,
-        days31to60: aging.buckets?.days31to60 ?? aging.days31to60 ?? 0,
-        days60plus: aging.buckets?.days60plus ?? aging.days60plus ?? 0,
+        current: aging.buckets?.current?.total ?? aging.buckets?.current ?? aging.current ?? 0,
+        days1to30: aging.buckets?.["1_30"]?.total ?? aging.buckets?.days1to30 ?? aging.days1to30 ?? 0,
+        days31to60: aging.buckets?.["31_60"]?.total ?? aging.buckets?.days31to60 ?? aging.days31to60 ?? 0,
+        days60plus: aging.buckets?.["60_plus"]?.total ?? aging.buckets?.days60plus ?? aging.days60plus ?? 0,
         totalOutstanding: aging.totalOutstanding ?? 0,
         invoices: aging.invoices ?? [],
       } as any);
@@ -772,9 +772,13 @@ function OverviewTab({
                   <p className="text-xs text-gray-500">Avg/Day</p>
                 </div>
               </div>
-              {jobVolume.busiestDay && (
+              {jobVolume?.busiestDay && (
                 <p className="text-sm text-gray-600 mb-3">
-                  Busiest day: <span className="font-medium">{jobVolume.busiestDay}</span>
+                  Busiest day: <span className="font-medium">
+                    {typeof jobVolume.busiestDay === "object"
+                      ? `${(jobVolume.busiestDay as any).date} (${(jobVolume.busiestDay as any).count} jobs)`
+                      : String(jobVolume.busiestDay)}
+                  </span>
                 </p>
               )}
               {jobVolume?.dayOfWeekDistribution?.length > 0 && (
