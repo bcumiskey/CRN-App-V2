@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Building, MapPin, Plus, User, Phone, Mail, Pencil, Trash2, Eye, EyeOff } from 'lucide-react'
-import Image from 'next/image'
 import v1Fetch from '@/lib/v1-compat'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card, CardContent } from '@/components/ui/Card'
@@ -141,20 +140,14 @@ export default function PropertiesPage() {
                 }`}
                 onClick={() => handleEdit(property.id)}
               >
-                {/* Property Image — V1 used Vercel Blob URLs which won't load; show placeholder stripe */}
                 {property.imageUrl ? (
-                  <div className="relative h-40 w-full bg-gray-200">
-                    <Image
+                  <div className="relative h-40 w-full bg-gray-200 overflow-hidden">
+                    <img
                       src={property.imageUrl}
                       alt={property.name}
-                      fill
-                      className={`object-cover ${!property.isActive ? 'grayscale' : ''}`}
-                      onError={(e) => {
-                        // Hide broken image, show gradient placeholder
-                        (e.target as HTMLImageElement).style.display = 'none'
-                      }}
+                      className={`w-full h-full object-cover ${!property.isActive ? 'grayscale' : ''}`}
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
                     />
-                    {/* Fallback gradient shown behind image */}
                     <div className="absolute inset-0 bg-gradient-to-br from-blue-400 to-blue-600 -z-10" />
                   </div>
                 ) : (

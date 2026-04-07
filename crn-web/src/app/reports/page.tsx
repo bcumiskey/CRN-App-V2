@@ -283,8 +283,18 @@ export default function ReportsPage() {
       })));
       // Worker earnings: API returns {workers: [...]} not a plain array
       setWorkerEarnings(Array.isArray(workersRes) ? workersRes : (workersRes as any)?.workers ?? []);
-      // Completion rate: API returns monthlyTrend not trend
-      setCompletionRate({ ...completionRes, trend: (completionRes as any).monthlyTrend ?? (completionRes as any).trend ?? [] } as any);
+      // Completion rate: map API field names to what page expects
+      const cr = completionRes as any;
+      setCompletionRate({
+        rate: cr.completionRate ?? cr.rate ?? 0,
+        scheduled: cr.totalScheduled ?? cr.scheduled ?? 0,
+        completed: cr.totalCompleted ?? cr.completed ?? 0,
+        cancelled: cr.totalCancelled ?? cr.cancelled ?? 0,
+        trend: (cr.monthlyTrend ?? cr.trend ?? []).map((t: any) => ({
+          ...t,
+          rate: t.completionRate ?? t.rate ?? 0,
+        })),
+      } as any);
       setJobVolume(volumeRes);
       // AR aging: API returns {buckets, totalOutstanding} — map to expected shape
       const aging = arRes as any;
