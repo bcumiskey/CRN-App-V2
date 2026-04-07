@@ -870,7 +870,7 @@ function OverviewTab({
                 <tbody className="divide-y divide-gray-50">
                   {workerEarnings.slice(0, 8).map((w) => (
                     <tr key={w.userId} className="hover:bg-gray-50">
-                      <td className="px-4 py-2.5 font-medium text-gray-900">{w.userName ?? w.name}</td>
+                      <td className="px-4 py-2.5 font-medium text-gray-900">{(w as any).userName ?? (w as any).name}</td>
                       <td className="px-4 py-2.5 text-right text-gray-600">{w.jobsWorked}</td>
                       <td className="px-4 py-2.5 text-right font-medium">
                         {formatCurrency(w.totalPay)}
@@ -1238,7 +1238,7 @@ function TeamTab({
                 <tbody className="divide-y divide-gray-50">
                   {earningsSort.sorted.map((w) => (
                     <tr key={w.userId} className="hover:bg-gray-50">
-                      <td className="px-4 py-2.5 font-medium text-gray-900">{w.userName ?? w.name}</td>
+                      <td className="px-4 py-2.5 font-medium text-gray-900">{(w as any).userName ?? (w as any).name}</td>
                       <td className="px-3 py-2.5 text-right text-gray-600">{w.jobsWorked}</td>
                       <td className="px-3 py-2.5 text-right text-gray-600">
                         {w.totalShares.toFixed(1)}
@@ -1336,7 +1336,7 @@ function TeamTab({
                 <tbody className="divide-y divide-gray-50">
                   {ten99Summary.map((e) => (
                     <tr key={e.userId} className="hover:bg-gray-50">
-                      <td className="px-4 py-2.5 font-medium text-gray-900">{e.userName ?? e.name}</td>
+                      <td className="px-4 py-2.5 font-medium text-gray-900">{(e as any).userName ?? (e as any).name}</td>
                       <td className="px-3 py-2.5 text-right font-medium">
                         {formatCurrency(e.totalPaid)}
                       </td>
@@ -1610,7 +1610,7 @@ function TaxTab({
                         )}
                       >
                         <td className="px-4 py-2.5 font-medium text-gray-900">
-                          {e.userName ?? e.name}
+                          {(e as any).userName ?? (e as any).name}
                         </td>
                         <td className="px-3 py-2.5 text-right font-medium">
                           {formatCurrency(e.totalPaid)}
