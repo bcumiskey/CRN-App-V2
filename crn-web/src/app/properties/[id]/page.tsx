@@ -2,13 +2,12 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { api } from "@/lib/api";
 import Link from "next/link";
+import v1Fetch from "@/lib/v1-compat";
 import {
   ArrowLeft,
   Plus,
   Trash2,
-  Camera,
   ListChecks,
   Building,
   Save,
@@ -26,9 +25,12 @@ import {
   User,
   Check,
   Send,
+  Palette,
+  Tag,
+  Shirt,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
-import Badge, { StatusBadge } from "@/components/ui/Badge";
+import { StatusBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
@@ -40,14 +42,22 @@ interface Room {
   id: string;
   name: string;
   bedConfig?: string;
+  bedType?: string;
+  bedCount?: number;
+  towelCount?: number;
+  floor?: string;
+  hasRobes?: boolean;
+  hasSlippers?: boolean;
   stockingNotes?: string;
 }
 
-interface Instruction {
+interface StandingInstruction {
   id: string;
   text: string;
-  priority: "high" | "medium" | "low";
+  instruction?: string; // V1 compat
+  priority: "critical" | "important" | "normal" | "high" | "medium" | "low";
   category?: string;
+  room?: string;
 }
 
 interface Note {
@@ -73,19 +83,28 @@ interface Owner {
   phone?: string;
 }
 
+interface ChecklistItem {
+  id: string;
+  text: string;
+  completed?: boolean;
+}
+
+interface Checklist {
+  id: string;
+  name: string;
+  items: ChecklistItem[];
+}
+
 interface Property {
   id: string;
   name: string;
   code: string;
   address?: string;
   status: string;
-  // V1 compat names (mapped by v1Fetch from V2's defaultJobFee/houseCutPercent)
   baseRate: number;
   expensePercent: number;
-  // V2 native names
   defaultJobFee?: number;
   houseCutPercent?: number;
-  // Access
   accessInstructions?: string;
   lockboxCode?: string;
   wifiName?: string;
@@ -96,6 +115,7 @@ interface Property {
   specialInstructions?: string;
   imageUrl?: string;
   color?: string;
+  calendarKeywords?: string;
   billingType?: string;
   ownerId?: string;
   ownerName?: string;
@@ -104,47 +124,50 @@ interface Property {
   owner?: Owner;
   rooms: Room[];
   recentJobs?: RecentJob[];
-  checklists?: any[];
-  standingInstructions?: any[];
-  propertyNotes?: any[];
+  checklists?: Checklist[];
+  standingInstructions?: StandingInstruction[];
+  propertyNotes?: Note[];
 }
 
 // ── Helpers ────────────────────────────────────────────────
-function notify(msg: string) {
-  console.log("[CRN]", msg);
-}
+const CALENDAR_COLORS = [
+  "#3B82F6", "#10B981", "#8B5CF6", "#EC4899",
+  "#6366F1", "#14B8A6", "#F97316", "#06B6D4",
+  "#EF4444", "#84CC16", "#A855F7", "#F59E0B",
+  "#0EA5E9", "#D946EF", "#22C55E", "#FB923C",
+];
 
 const ROOM_OPTIONS = [
-  "Living Room",
-  "Kitchen",
-  "Master Bedroom",
-  "Bedroom 2",
-  "Bedroom 3",
-  "Bedroom 4",
-  "Master Bathroom",
-  "Bathroom 2",
-  "Bathroom 3",
-  "Dining Room",
-  "Patio/Deck",
-  "Pool Area",
-  "Garage",
-  "Laundry Room",
-  "Entry",
-  "Hallway",
-  "Other",
+  "Living Room", "Kitchen", "Master Bedroom", "Bedroom 2",
+  "Bedroom 3", "Bedroom 4", "Master Bathroom", "Bathroom 2",
+  "Bathroom 3", "Dining Room", "Patio/Deck", "Pool Area",
+  "Garage", "Laundry Room", "Entry", "Hallway", "Other",
 ];
 
-const priorityColor: Record<string, string> = {
-  high: "bg-red-100 text-red-700 border-red-200",
-  medium: "bg-yellow-100 text-yellow-700 border-yellow-200",
-  low: "bg-gray-100 text-gray-600 border-gray-200",
+const PRIORITY_LABELS: Record<string, string> = {
+  critical: "Critical",
+  important: "Important",
+  normal: "Normal",
+  high: "Critical",
+  medium: "Important",
+  low: "Normal",
 };
 
-const priorityOptions = [
-  { value: "high", label: "High" },
-  { value: "medium", label: "Medium" },
-  { value: "low", label: "Low" },
-];
+const PRIORITY_STYLES: Record<string, string> = {
+  critical: "bg-red-100 text-red-800 border-red-200",
+  high: "bg-red-100 text-red-800 border-red-200",
+  important: "bg-amber-100 text-amber-800 border-amber-200",
+  medium: "bg-amber-100 text-amber-800 border-amber-200",
+  normal: "bg-gray-100 text-gray-700 border-gray-200",
+  low: "bg-gray-100 text-gray-700 border-gray-200",
+};
+
+/** Normalize priority strings to the three display groups */
+function normalizePriority(p: string): "critical" | "important" | "normal" {
+  if (p === "critical" || p === "high") return "critical";
+  if (p === "important" || p === "medium") return "important";
+  return "normal";
+}
 
 // ── Inline Editable Field ──────────────────────────────────
 function InlineField({
@@ -153,12 +176,14 @@ function InlineField({
   onSave,
   type = "text",
   mono = false,
+  multiline = false,
 }: {
   label: string;
   value: string;
   onSave: (val: string) => void;
   type?: string;
   mono?: boolean;
+  multiline?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -173,8 +198,8 @@ function InlineField({
         className="group cursor-pointer p-2 -mx-2 rounded-lg hover:bg-gray-50 transition-colors"
         onClick={() => setEditing(true)}
       >
-        <p className="text-xs text-gray-500">{label}</p>
-        <p className={cn("text-sm font-medium text-gray-900", mono && "font-mono")}>
+        {label && <p className="text-xs text-gray-500">{label}</p>}
+        <p className={cn("text-sm font-medium text-gray-900", mono && "font-mono", multiline && "whitespace-pre-wrap")}>
           {value || <span className="text-gray-400 italic">Click to add...</span>}
         </p>
         <Pencil
@@ -185,9 +210,48 @@ function InlineField({
     );
   }
 
+  const commit = () => {
+    onSave(draft);
+    setEditing(false);
+  };
+
+  const cancel = () => {
+    setDraft(value);
+    setEditing(false);
+  };
+
+  if (multiline) {
+    return (
+      <div className="space-y-1">
+        {label && <p className="text-xs text-gray-500">{label}</p>}
+        <textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          autoFocus
+          rows={3}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") cancel();
+          }}
+          className={cn(
+            "w-full px-2 py-1 text-sm border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500",
+            mono && "font-mono"
+          )}
+        />
+        <div className="flex gap-1">
+          <button onClick={commit} className="p-1 text-green-600 hover:bg-green-50 rounded">
+            <Check size={14} />
+          </button>
+          <button onClick={cancel} className="p-1 text-gray-400 hover:bg-gray-100 rounded">
+            <X size={14} />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-1">
-      <p className="text-xs text-gray-500">{label}</p>
+      {label && <p className="text-xs text-gray-500">{label}</p>}
       <div className="flex gap-1">
         <input
           type={type}
@@ -195,36 +259,18 @@ function InlineField({
           onChange={(e) => setDraft(e.target.value)}
           autoFocus
           onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              onSave(draft);
-              setEditing(false);
-            }
-            if (e.key === "Escape") {
-              setDraft(value);
-              setEditing(false);
-            }
+            if (e.key === "Enter") commit();
+            if (e.key === "Escape") cancel();
           }}
           className={cn(
             "flex-1 px-2 py-1 text-sm border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500",
             mono && "font-mono"
           )}
         />
-        <button
-          onClick={() => {
-            onSave(draft);
-            setEditing(false);
-          }}
-          className="p-1 text-green-600 hover:bg-green-50 rounded"
-        >
+        <button onClick={commit} className="p-1 text-green-600 hover:bg-green-50 rounded">
           <Check size={14} />
         </button>
-        <button
-          onClick={() => {
-            setDraft(value);
-            setEditing(false);
-          }}
-          className="p-1 text-gray-400 hover:bg-gray-100 rounded"
-        >
+        <button onClick={cancel} className="p-1 text-gray-400 hover:bg-gray-100 rounded">
           <X size={14} />
         </button>
       </div>
@@ -238,7 +284,7 @@ export default function PropertyDetailPage() {
   const router = useRouter();
 
   const [property, setProperty] = useState<Property | null>(null);
-  const [instructions, setInstructions] = useState<Instruction[]>([]);
+  const [instructions, setInstructions] = useState<StandingInstruction[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"info" | "instructions" | "rooms" | "notes">("info");
@@ -248,40 +294,73 @@ export default function PropertyDetailPage() {
 
   // Instructions form
   const [newInstrText, setNewInstrText] = useState("");
-  const [newInstrPriority, setNewInstrPriority] = useState<string>("medium");
+  const [newInstrPriority, setNewInstrPriority] = useState<string>("normal");
   const [newInstrCategory, setNewInstrCategory] = useState("");
   const [savingInstr, setSavingInstr] = useState(false);
-  const [editingInstr, setEditingInstr] = useState<Instruction | null>(null);
+  const [editingInstr, setEditingInstr] = useState<StandingInstruction | null>(null);
 
   // Room management
   const [showRoomModal, setShowRoomModal] = useState(false);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
-  const [roomForm, setRoomForm] = useState({ name: "", bedConfig: "", stockingNotes: "" });
+  const [roomForm, setRoomForm] = useState({
+    name: "",
+    bedConfig: "",
+    bedType: "",
+    bedCount: "",
+    towelCount: "",
+    floor: "",
+    hasRobes: false,
+    hasSlippers: false,
+    stockingNotes: "",
+  });
   const [savingRoom, setSavingRoom] = useState(false);
 
   // Notes
   const [newNote, setNewNote] = useState("");
   const [savingNote, setSavingNote] = useState(false);
 
+  // Color picker
+  const [showColorPicker, setShowColorPicker] = useState(false);
+
   // ── Load data ──────────────────────────────────────────
-  const loadData = useCallback(() => {
+  const loadData = useCallback(async () => {
     setLoading(true);
-    Promise.all([
-      api.get<Property>(`/properties/${id}`),
-      api
-        .get<{ instructions: Instruction[] }>(`/properties/${id}/instructions`)
-        .catch(() => ({ instructions: [] })),
-      api
-        .get<{ notes: Note[] }>(`/properties/${id}/notes`)
-        .catch(() => ({ notes: [] })),
-    ])
-      .then(([propData, instrData, notesData]) => {
+    try {
+      const [propRes, instrRes, notesRes] = await Promise.all([
+        v1Fetch(`/api/properties/${id}`),
+        v1Fetch(`/api/properties/${id}/instructions`).catch(() => null),
+        v1Fetch(`/api/properties/${id}/notes`).catch(() => null),
+      ]);
+
+      if (propRes.ok) {
+        const propData = await propRes.json();
         setProperty(propData);
-        setInstructions(instrData.instructions);
-        setNotes(notesData.notes);
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
+      }
+
+      if (instrRes && instrRes.ok) {
+        const instrData = await instrRes.json();
+        // Handle both { instructions: [...] } and flat array
+        const list = instrData.instructions || instrData;
+        setInstructions(
+          Array.isArray(list)
+            ? list.map((i: any) => ({
+                ...i,
+                text: i.text || i.instruction || "",
+                priority: i.priority || "normal",
+              }))
+            : []
+        );
+      }
+
+      if (notesRes && notesRes.ok) {
+        const notesData = await notesRes.json();
+        setNotes(notesData.notes || notesData || []);
+      }
+    } catch (err) {
+      console.error("Failed to load property data:", err);
+    } finally {
+      setLoading(false);
+    }
   }, [id]);
 
   useEffect(() => {
@@ -289,15 +368,20 @@ export default function PropertyDetailPage() {
   }, [id, loadData]);
 
   // ── Property field update ──────────────────────────────
-  const updateField = async (field: string, value: string | number) => {
+  const updateField = async (field: string, value: string | number | boolean) => {
     if (!property) return;
     setSaving(true);
     try {
-      const updated = await api.patch<Property>(`/properties/${id}`, { [field]: value });
-      setProperty(updated);
-      notify("Property updated");
+      const res = await v1Fetch(`/api/properties/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ [field]: value }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setProperty(updated);
+      }
     } catch {
-      notify("Failed to update property");
+      console.error("Failed to update property");
     } finally {
       setSaving(false);
     }
@@ -308,17 +392,31 @@ export default function PropertyDetailPage() {
     if (!newInstrText.trim()) return;
     setSavingInstr(true);
     try {
-      const added = await api.post<Instruction>(`/properties/${id}/instructions`, {
-        text: newInstrText,
-        priority: newInstrPriority,
-        category: newInstrCategory || undefined,
+      const res = await v1Fetch(`/api/properties/${id}/instructions`, {
+        method: "POST",
+        body: JSON.stringify({
+          text: newInstrText,
+          instruction: newInstrText,
+          priority: newInstrPriority,
+          category: newInstrCategory || undefined,
+          room: newInstrCategory || undefined,
+        }),
       });
-      setInstructions([...instructions, added]);
-      setNewInstrText("");
-      setNewInstrCategory("");
-      notify("Instruction added");
+      if (res.ok) {
+        const added = await res.json();
+        setInstructions([
+          ...instructions,
+          {
+            ...added,
+            text: added.text || added.instruction || newInstrText,
+            priority: added.priority || newInstrPriority,
+          },
+        ]);
+        setNewInstrText("");
+        setNewInstrCategory("");
+      }
     } catch {
-      notify("Failed to add instruction");
+      console.error("Failed to add instruction");
     } finally {
       setSavingInstr(false);
     }
@@ -327,36 +425,60 @@ export default function PropertyDetailPage() {
   const handleUpdateInstruction = async () => {
     if (!editingInstr) return;
     try {
-      const updated = await api.patch<Instruction>(
-        `/properties/${id}/instructions/${editingInstr.id}`,
-        {
+      const res = await v1Fetch(`/api/properties/${id}/instructions`, {
+        method: "PUT",
+        body: JSON.stringify({
+          id: editingInstr.id,
           text: editingInstr.text,
+          instruction: editingInstr.text,
           priority: editingInstr.priority,
           category: editingInstr.category,
-        }
-      );
-      setInstructions(instructions.map((i) => (i.id === updated.id ? updated : i)));
-      setEditingInstr(null);
-      notify("Instruction updated");
+          room: editingInstr.category,
+        }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setInstructions(
+          instructions.map((i) =>
+            i.id === editingInstr.id
+              ? { ...updated, text: updated.text || updated.instruction || editingInstr.text, priority: updated.priority || editingInstr.priority }
+              : i
+          )
+        );
+        setEditingInstr(null);
+      }
     } catch {
-      notify("Failed to update instruction");
+      console.error("Failed to update instruction");
     }
   };
 
   const handleDeleteInstruction = async (instrId: string) => {
     try {
-      await api.delete(`/properties/${id}/instructions/${instrId}`);
-      setInstructions(instructions.filter((i) => i.id !== instrId));
-      notify("Instruction removed");
+      const res = await v1Fetch(`/api/properties/${id}/instructions?instructionId=${instrId}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setInstructions(instructions.filter((i) => i.id !== instrId));
+      }
     } catch {
-      notify("Failed to delete instruction");
+      console.error("Failed to delete instruction");
     }
   };
 
   // ── Rooms ──────────────────────────────────────────────
   const openAddRoom = () => {
     setEditingRoom(null);
-    setRoomForm({ name: "", bedConfig: "", stockingNotes: "" });
+    setRoomForm({
+      name: "",
+      bedConfig: "",
+      bedType: "",
+      bedCount: "",
+      towelCount: "",
+      floor: "",
+      hasRobes: false,
+      hasSlippers: false,
+      stockingNotes: "",
+    });
     setShowRoomModal(true);
   };
 
@@ -365,6 +487,12 @@ export default function PropertyDetailPage() {
     setRoomForm({
       name: room.name,
       bedConfig: room.bedConfig || "",
+      bedType: room.bedType || "",
+      bedCount: String(room.bedCount || ""),
+      towelCount: String(room.towelCount || ""),
+      floor: room.floor || "",
+      hasRobes: room.hasRobes || false,
+      hasSlippers: room.hasSlippers || false,
       stockingNotes: room.stockingNotes || "",
     });
     setShowRoomModal(true);
@@ -374,16 +502,33 @@ export default function PropertyDetailPage() {
     if (!roomForm.name.trim()) return;
     setSavingRoom(true);
     try {
+      const payload = {
+        name: roomForm.name,
+        bedConfig: roomForm.bedConfig || undefined,
+        bedType: roomForm.bedType || undefined,
+        bedCount: roomForm.bedCount ? parseInt(roomForm.bedCount) : undefined,
+        towelCount: roomForm.towelCount ? parseInt(roomForm.towelCount) : undefined,
+        floor: roomForm.floor || undefined,
+        hasRobes: roomForm.hasRobes,
+        hasSlippers: roomForm.hasSlippers,
+        stockingNotes: roomForm.stockingNotes || undefined,
+      };
+
       if (editingRoom) {
-        await api.patch(`/properties/${id}/rooms/${editingRoom.id}`, roomForm);
+        await v1Fetch(`/api/properties/${id}/rooms/${editingRoom.id}`, {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        });
       } else {
-        await api.post(`/properties/${id}/rooms`, roomForm);
+        await v1Fetch(`/api/properties/${id}/rooms`, {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
       }
       setShowRoomModal(false);
       loadData();
-      notify(editingRoom ? "Room updated" : "Room added");
     } catch {
-      notify("Failed to save room");
+      console.error("Failed to save room");
     } finally {
       setSavingRoom(false);
     }
@@ -392,11 +537,12 @@ export default function PropertyDetailPage() {
   const handleDeleteRoom = async (roomId: string) => {
     if (!confirm("Delete this room?")) return;
     try {
-      await api.delete(`/properties/${id}/rooms/${roomId}`);
+      await v1Fetch(`/api/properties/${id}/rooms/${roomId}`, {
+        method: "DELETE",
+      });
       loadData();
-      notify("Room deleted");
     } catch {
-      notify("Failed to delete room");
+      console.error("Failed to delete room");
     }
   };
 
@@ -405,12 +551,17 @@ export default function PropertyDetailPage() {
     if (!newNote.trim()) return;
     setSavingNote(true);
     try {
-      const added = await api.post<Note>(`/properties/${id}/notes`, { text: newNote });
-      setNotes([added, ...notes]);
-      setNewNote("");
-      notify("Note added");
+      const res = await v1Fetch(`/api/properties/${id}/notes`, {
+        method: "POST",
+        body: JSON.stringify({ text: newNote }),
+      });
+      if (res.ok) {
+        const added = await res.json();
+        setNotes([added, ...notes]);
+        setNewNote("");
+      }
     } catch {
-      notify("Failed to add note");
+      console.error("Failed to add note");
     } finally {
       setSavingNote(false);
     }
@@ -418,11 +569,12 @@ export default function PropertyDetailPage() {
 
   const handleDeleteNote = async (noteId: string) => {
     try {
-      await api.delete(`/properties/${id}/notes/${noteId}`);
+      await v1Fetch(`/api/properties/${id}/notes/${noteId}`, {
+        method: "DELETE",
+      });
       setNotes(notes.filter((n) => n.id !== noteId));
-      notify("Note removed");
     } catch {
-      notify("Failed to delete note");
+      console.error("Failed to delete note");
     }
   };
 
@@ -460,15 +612,12 @@ export default function PropertyDetailPage() {
     phone: property.ownerPhone,
   };
 
-  const groupedInstructions = instructions.reduce(
-    (acc, instr) => {
-      const p = instr.priority || "low";
-      if (!acc[p]) acc[p] = [];
-      acc[p].push(instr);
-      return acc;
-    },
-    {} as Record<string, Instruction[]>
-  );
+  // Group instructions by normalized priority
+  const groupedInstructions: Record<string, StandingInstruction[]> = { critical: [], important: [], normal: [] };
+  instructions.forEach((instr) => {
+    const group = normalizePriority(instr.priority || "normal");
+    groupedInstructions[group].push(instr);
+  });
 
   const tabs = [
     { key: "info" as const, label: "Property Info", icon: Building },
@@ -489,6 +638,13 @@ export default function PropertyDetailPage() {
         </button>
         <div className="flex-1">
           <div className="flex items-center gap-3">
+            {/* Color swatch */}
+            <button
+              onClick={() => setShowColorPicker(!showColorPicker)}
+              className="w-5 h-5 rounded-full border-2 border-white shadow-sm shrink-0 cursor-pointer hover:scale-110 transition-transform"
+              style={{ backgroundColor: property.color || "#3B82F6" }}
+              title="Calendar color"
+            />
             <h1 className="text-2xl font-bold text-gray-900">{property.name}</h1>
             <span className="text-sm font-mono text-gray-400">{property.code}</span>
             <StatusBadge status={property.status} />
@@ -502,6 +658,51 @@ export default function PropertyDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Color Picker Popover */}
+      {showColorPicker && (
+        <div className="mb-4 p-4 bg-white border border-gray-200 rounded-lg shadow-lg w-fit">
+          <p className="text-xs font-medium text-gray-600 mb-2 flex items-center gap-1">
+            <Palette size={12} />
+            Calendar Color
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {CALENDAR_COLORS.map((color) => (
+              <button
+                key={color}
+                onClick={() => {
+                  updateField("color", color);
+                  setShowColorPicker(false);
+                }}
+                className={cn(
+                  "w-8 h-8 rounded-full border-2 transition-transform hover:scale-110",
+                  property.color === color ? "border-gray-900 scale-110" : "border-transparent"
+                )}
+                style={{ backgroundColor: color }}
+              />
+            ))}
+          </div>
+          {property.calendarKeywords && (
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <p className="text-xs text-gray-500">
+                <Tag size={10} className="inline mr-1" />
+                Keywords: {property.calendarKeywords}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Property Image */}
+      {property.imageUrl && (
+        <div className="mb-6 rounded-xl overflow-hidden max-w-md">
+          <img
+            src={property.imageUrl}
+            alt={property.name}
+            className="w-full h-48 object-cover"
+          />
+        </div>
+      )}
 
       {/* Tab Navigation */}
       <div className="flex gap-1 mb-6 bg-gray-100 rounded-lg p-1 w-fit">
@@ -527,23 +728,44 @@ export default function PropertyDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Column */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Quick Info Cards — inline editable */}
+            {/* Quick Info Cards */}
             <Card>
               <CardContent>
                 <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Info</h2>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  <InlineField
-                    label="Default Fee"
-                    value={String(property.baseRate)}
-                    type="number"
-                    onSave={(v) => updateField("baseRate", parseFloat(v) || 0)}
-                  />
-                  <InlineField
-                    label="House Cut %"
-                    value={String(property.expensePercent)}
-                    type="number"
-                    onSave={(v) => updateField("expensePercent", parseFloat(v) || 0)}
-                  />
+                  <div className="p-3 bg-green-50 rounded-lg">
+                    <p className="text-xs text-green-600 font-medium flex items-center gap-1">
+                      <DollarSign size={12} />
+                      Base Rate
+                    </p>
+                    <p className="text-lg font-bold text-green-800">
+                      {formatCurrency(property.baseRate ?? property.defaultJobFee ?? 0)}
+                    </p>
+                    <button
+                      onClick={() => {
+                        const val = prompt("Enter new base rate:", String(property.baseRate || 0));
+                        if (val !== null) updateField("baseRate", parseFloat(val) || 0);
+                      }}
+                      className="text-xs text-green-600 hover:underline mt-1"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                  <div className="p-3 bg-blue-50 rounded-lg">
+                    <p className="text-xs text-blue-600 font-medium">House Cut %</p>
+                    <p className="text-lg font-bold text-blue-800">
+                      {property.expensePercent ?? property.houseCutPercent ?? 0}%
+                    </p>
+                    <button
+                      onClick={() => {
+                        const val = prompt("Enter house cut %:", String(property.expensePercent || 0));
+                        if (val !== null) updateField("expensePercent", parseFloat(val) || 0);
+                      }}
+                      className="text-xs text-blue-600 hover:underline mt-1"
+                    >
+                      Edit
+                    </button>
+                  </div>
                   <InlineField
                     label="Name"
                     value={property.name}
@@ -569,6 +791,7 @@ export default function PropertyDetailPage() {
                     >
                       <option value="active">Active</option>
                       <option value="inactive">Inactive</option>
+                      <option value="lame_duck">Lame Duck</option>
                       <option value="archived">Archived</option>
                     </select>
                   </div>
@@ -576,7 +799,7 @@ export default function PropertyDetailPage() {
               </CardContent>
             </Card>
 
-            {/* Access & Info — inline editable */}
+            {/* Access & Info */}
             <Card>
               <CardContent>
                 <h2 className="text-lg font-semibold text-gray-900 mb-4">Access & Info</h2>
@@ -609,9 +832,9 @@ export default function PropertyDetailPage() {
                   <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
                     <Car size={16} className="text-gray-400 mt-0.5 shrink-0" />
                     <InlineField
-                      label="Parking Instructions"
-                      value={property.parkingInstructions || ""}
-                      onSave={(v) => updateField("parkingInstructions", v)}
+                      label="Parking Notes"
+                      value={property.parkingNotes || property.parkingInstructions || ""}
+                      onSave={(v) => updateField("parkingNotes", v)}
                     />
                   </div>
                   <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
@@ -623,24 +846,52 @@ export default function PropertyDetailPage() {
                     />
                   </div>
                 </div>
-                {/* Special Instructions — editable */}
+
+                {/* Access Instructions */}
+                {(property.accessInstructions || true) && (
+                  <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Key size={14} className="text-blue-600" />
+                      <p className="text-xs font-medium text-blue-700 uppercase">Access Instructions</p>
+                    </div>
+                    <InlineField
+                      label=""
+                      value={property.accessInstructions || ""}
+                      multiline
+                      onSave={(v) => updateField("accessInstructions", v)}
+                    />
+                  </div>
+                )}
+
+                {/* Special Instructions */}
                 <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                   <div className="flex items-center gap-2 mb-1">
                     <AlertTriangle size={14} className="text-yellow-600" />
-                    <p className="text-xs font-medium text-yellow-700 uppercase">
-                      Special Instructions
-                    </p>
+                    <p className="text-xs font-medium text-yellow-700 uppercase">Special Instructions</p>
                   </div>
                   <InlineField
                     label=""
                     value={property.specialInstructions || ""}
+                    multiline
                     onSave={(v) => updateField("specialInstructions", v)}
                   />
+                </div>
+
+                {/* Calendar Keywords */}
+                <div className="mt-4">
+                  <InlineField
+                    label="Calendar Keywords"
+                    value={property.calendarKeywords || ""}
+                    onSave={(v) => updateField("calendarKeywords", v)}
+                  />
+                  <p className="text-xs text-gray-400 mt-1">
+                    Comma-separated keywords to auto-match calendar entries to this property.
+                  </p>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Owner Info — inline editable */}
+            {/* Owner Info */}
             <Card>
               <CardContent>
                 <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
@@ -708,7 +959,7 @@ export default function PropertyDetailPage() {
               </CardContent>
             </Card>
 
-            {/* Quick Stats */}
+            {/* At a Glance */}
             <Card>
               <CardContent>
                 <h2 className="text-lg font-semibold text-gray-900 mb-4">At a Glance</h2>
@@ -725,17 +976,51 @@ export default function PropertyDetailPage() {
                     <span className="text-gray-500">Notes</span>
                     <span className="font-medium">{notes.length}</span>
                   </div>
+                  <hr className="border-gray-100" />
                   <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-500">Default Fee</span>
-                    <span className="font-semibold">{formatCurrency(property.baseRate)}</span>
+                    <span className="text-gray-500">Base Rate</span>
+                    <span className="font-semibold text-green-700">
+                      {formatCurrency(property.baseRate ?? property.defaultJobFee ?? 0)}
+                    </span>
                   </div>
                   <div className="flex justify-between items-center text-sm">
                     <span className="text-gray-500">House Cut</span>
-                    <span className="font-semibold">{property.expensePercent}%</span>
+                    <span className="font-semibold">
+                      {property.expensePercent ?? property.houseCutPercent ?? 0}%
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-gray-500">Calendar Color</span>
+                    <span
+                      className="w-4 h-4 rounded-full inline-block"
+                      style={{ backgroundColor: property.color || "#3B82F6" }}
+                    />
                   </div>
                 </div>
               </CardContent>
             </Card>
+
+            {/* Checklists Summary */}
+            {property.checklists && property.checklists.length > 0 && (
+              <Card>
+                <CardContent>
+                  <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                    <ListChecks size={18} className="text-gray-400" />
+                    Checklists
+                  </h2>
+                  <div className="space-y-3">
+                    {property.checklists.map((cl: any) => (
+                      <div key={cl.id} className="p-3 bg-gray-50 rounded-lg">
+                        <p className="text-sm font-medium text-gray-900">{cl.name}</p>
+                        <p className="text-xs text-gray-400 mt-1">
+                          {cl.items?.length ?? 0} items
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
         </div>
       )}
@@ -748,8 +1033,8 @@ export default function PropertyDetailPage() {
           </CardHeader>
           <CardContent>
             <p className="text-sm text-gray-500 mb-4">
-              Add specific cleaning instructions. They will be shown to the team for every job at
-              this property.
+              Standing instructions are shown to the cleaning team for every job at this property.
+              They are grouped by priority so critical items are always visible first.
             </p>
 
             {/* Add new instruction */}
@@ -762,11 +1047,9 @@ export default function PropertyDetailPage() {
                     onChange={(e) => setNewInstrPriority(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                   >
-                    {priorityOptions.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
+                    <option value="critical">Critical</option>
+                    <option value="important">Important</option>
+                    <option value="normal">Normal</option>
                   </select>
                 </div>
                 <div>
@@ -791,7 +1074,7 @@ export default function PropertyDetailPage() {
                 <input
                   value={newInstrText}
                   onChange={(e) => setNewInstrText(e.target.value)}
-                  placeholder="Enter a cleaning instruction..."
+                  placeholder="Enter a standing instruction..."
                   onKeyDown={(e) => e.key === "Enter" && handleAddInstruction()}
                   className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                 />
@@ -806,115 +1089,132 @@ export default function PropertyDetailPage() {
               </div>
             </div>
 
-            {/* Instructions list */}
+            {/* Instructions grouped by priority */}
             {instructions.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                No instructions yet. Add your first instruction above.
-              </div>
+              <EmptyState
+                icon={<ListChecks size={40} />}
+                title="No standing instructions"
+                description="Add instructions that will apply to every cleaning job at this property."
+              />
             ) : (
-              <div className="space-y-4">
-                {(["high", "medium", "low"] as const).map(
-                  (priority) =>
-                    groupedInstructions[priority] &&
-                    groupedInstructions[priority].length > 0 && (
-                      <div key={priority}>
-                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
-                          {priority} Priority
-                        </p>
-                        <div className="space-y-2">
-                          {groupedInstructions[priority].map((instr) => (
-                            <div
-                              key={instr.id}
-                              className={cn(
-                                "flex items-start gap-3 p-3 rounded-lg border group",
-                                priorityColor[priority]
-                              )}
-                            >
-                              {editingInstr?.id === instr.id ? (
-                                <div className="flex-1 space-y-2">
-                                  <input
-                                    value={editingInstr.text}
-                                    onChange={(e) =>
-                                      setEditingInstr({ ...editingInstr, text: e.target.value })
-                                    }
-                                    autoFocus
-                                    className="w-full px-2 py-1 border border-blue-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                  />
-                                  <div className="flex gap-2">
-                                    <select
-                                      value={editingInstr.priority}
-                                      onChange={(e) =>
-                                        setEditingInstr({
-                                          ...editingInstr,
-                                          priority: e.target.value as "high" | "medium" | "low",
-                                        })
-                                      }
-                                      className="px-2 py-1 border border-gray-300 rounded-md text-sm"
-                                    >
-                                      {priorityOptions.map((o) => (
-                                        <option key={o.value} value={o.value}>
-                                          {o.label}
-                                        </option>
-                                      ))}
-                                    </select>
-                                    <select
-                                      value={editingInstr.category || ""}
-                                      onChange={(e) =>
-                                        setEditingInstr({
-                                          ...editingInstr,
-                                          category: e.target.value || undefined,
-                                        })
-                                      }
-                                      className="px-2 py-1 border border-gray-300 rounded-md text-sm"
-                                    >
-                                      <option value="">General</option>
-                                      {ROOM_OPTIONS.map((r) => (
-                                        <option key={r} value={r}>
-                                          {r}
-                                        </option>
-                                      ))}
-                                    </select>
-                                    <Button size="sm" onClick={handleUpdateInstruction}>
-                                      <Save size={14} />
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      onClick={() => setEditingInstr(null)}
-                                    >
-                                      <X size={14} />
-                                    </Button>
-                                  </div>
-                                </div>
-                              ) : (
-                                <>
-                                  <div className="flex-1">
-                                    <p
-                                      className="text-sm cursor-pointer hover:text-blue-600"
-                                      onClick={() => setEditingInstr(instr)}
-                                    >
-                                      {instr.text}
-                                    </p>
-                                    {instr.category && (
-                                      <span className="text-xs text-gray-500 mt-1 inline-block">
-                                        {instr.category}
-                                      </span>
-                                    )}
-                                  </div>
-                                  <button
-                                    onClick={() => handleDeleteInstruction(instr.id)}
-                                    className="opacity-0 group-hover:opacity-100 p-1 text-red-500 hover:bg-red-50 rounded transition-opacity"
-                                  >
-                                    <Trash2 size={14} />
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          ))}
-                        </div>
+              <div className="space-y-6">
+                {(["critical", "important", "normal"] as const).map((group) => {
+                  const items = groupedInstructions[group];
+                  if (!items || items.length === 0) return null;
+
+                  const groupColor = {
+                    critical: "border-l-red-500",
+                    important: "border-l-amber-500",
+                    normal: "border-l-gray-300",
+                  }[group];
+
+                  const groupBg = {
+                    critical: "bg-red-50",
+                    important: "bg-amber-50",
+                    normal: "bg-gray-50",
+                  }[group];
+
+                  return (
+                    <div key={group}>
+                      <div className="flex items-center gap-2 mb-3">
+                        <span
+                          className={cn(
+                            "inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold uppercase tracking-wider",
+                            PRIORITY_STYLES[group]
+                          )}
+                        >
+                          {PRIORITY_LABELS[group]} ({items.length})
+                        </span>
                       </div>
-                    )
-                )}
+                      <div className="space-y-2">
+                        {items.map((instr) => (
+                          <div
+                            key={instr.id}
+                            className={cn(
+                              "flex items-start gap-3 p-3 rounded-lg border-l-4 group",
+                              groupColor,
+                              groupBg
+                            )}
+                          >
+                            {editingInstr?.id === instr.id ? (
+                              <div className="flex-1 space-y-2">
+                                <input
+                                  value={editingInstr.text}
+                                  onChange={(e) =>
+                                    setEditingInstr({ ...editingInstr, text: e.target.value })
+                                  }
+                                  autoFocus
+                                  className="w-full px-2 py-1 border border-blue-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                                <div className="flex gap-2">
+                                  <select
+                                    value={editingInstr.priority}
+                                    onChange={(e) =>
+                                      setEditingInstr({
+                                        ...editingInstr,
+                                        priority: e.target.value as any,
+                                      })
+                                    }
+                                    className="px-2 py-1 border border-gray-300 rounded-md text-sm"
+                                  >
+                                    <option value="critical">Critical</option>
+                                    <option value="important">Important</option>
+                                    <option value="normal">Normal</option>
+                                  </select>
+                                  <select
+                                    value={editingInstr.category || ""}
+                                    onChange={(e) =>
+                                      setEditingInstr({
+                                        ...editingInstr,
+                                        category: e.target.value || undefined,
+                                      })
+                                    }
+                                    className="px-2 py-1 border border-gray-300 rounded-md text-sm"
+                                  >
+                                    <option value="">General</option>
+                                    {ROOM_OPTIONS.map((r) => (
+                                      <option key={r} value={r}>
+                                        {r}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <Button size="sm" onClick={handleUpdateInstruction}>
+                                    <Save size={14} />
+                                  </Button>
+                                  <Button size="sm" variant="ghost" onClick={() => setEditingInstr(null)}>
+                                    <X size={14} />
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <div className="flex-1">
+                                  <p
+                                    className="text-sm cursor-pointer hover:text-blue-600"
+                                    onClick={() => setEditingInstr(instr)}
+                                  >
+                                    {instr.text}
+                                  </p>
+                                  {instr.category && (
+                                    <span className="text-xs text-gray-500 mt-1 inline-block">
+                                      {instr.category}
+                                    </span>
+                                  )}
+                                </div>
+                                <button
+                                  onClick={() => handleDeleteInstruction(instr.id)}
+                                  className="opacity-0 group-hover:opacity-100 p-1 text-red-500 hover:bg-red-50 rounded transition-opacity"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </CardContent>
@@ -941,39 +1241,77 @@ export default function PropertyDetailPage() {
               <EmptyState
                 icon={<BedDouble size={40} />}
                 title="No rooms added yet"
-                description="Add rooms to document bed configurations and stocking notes."
+                description="Add rooms to document bed configurations, stocking notes, and amenities."
                 action={{ label: "Add Room", onClick: openAddRoom }}
               />
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {property.rooms.map((room) => (
                   <div
                     key={room.id}
-                    className="flex items-start justify-between p-4 bg-gray-50 rounded-lg group hover:bg-gray-100 transition-colors"
+                    className="p-4 bg-gray-50 rounded-lg group hover:bg-gray-100 transition-colors border border-gray-100"
                   >
-                    <div className="flex-1">
-                      <p className="font-medium text-gray-900">{room.name}</p>
-                      {room.bedConfig && (
-                        <p className="text-sm text-gray-500 mt-0.5">Beds: {room.bedConfig}</p>
+                    <div className="flex items-start justify-between mb-2">
+                      <div>
+                        <h3 className="font-semibold text-gray-900 text-base">{room.name}</h3>
+                        {room.floor && (
+                          <span className="text-xs text-gray-400">Floor: {room.floor}</span>
+                        )}
+                      </div>
+                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => openEditRoom(room)}
+                          className="p-1.5 text-gray-500 hover:bg-white rounded"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteRoom(room.id)}
+                          className="p-1.5 text-red-500 hover:bg-white rounded"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Bed & amenity details */}
+                    <div className="flex flex-wrap gap-3 mb-3">
+                      {(room.bedConfig || room.bedType) && (
+                        <span className="inline-flex items-center gap-1 text-xs bg-white px-2 py-1 rounded border border-gray-200 text-gray-600">
+                          <BedDouble size={12} />
+                          {room.bedConfig || `${room.bedCount || ""} ${room.bedType || ""}`.trim()}
+                        </span>
                       )}
-                      {room.stockingNotes && (
-                        <p className="text-sm text-gray-400 mt-0.5">{room.stockingNotes}</p>
+                      {room.towelCount != null && room.towelCount > 0 && (
+                        <span className="inline-flex items-center gap-1 text-xs bg-white px-2 py-1 rounded border border-gray-200 text-gray-600">
+                          Towels: {room.towelCount}
+                        </span>
+                      )}
+                      {room.hasRobes && (
+                        <span className="inline-flex items-center gap-1 text-xs bg-purple-50 px-2 py-1 rounded border border-purple-200 text-purple-700">
+                          <Shirt size={12} />
+                          Robes
+                        </span>
+                      )}
+                      {room.hasSlippers && (
+                        <span className="inline-flex items-center gap-1 text-xs bg-purple-50 px-2 py-1 rounded border border-purple-200 text-purple-700">
+                          Slippers
+                        </span>
                       )}
                     </div>
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={() => openEditRoom(room)}
-                        className="p-1.5 text-gray-500 hover:bg-white rounded"
-                      >
-                        <Pencil size={14} />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteRoom(room.id)}
-                        className="p-1.5 text-red-500 hover:bg-white rounded"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
+
+                    {/* Stocking Notes — prominent display */}
+                    {room.stockingNotes && (
+                      <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                        <p className="text-xs font-semibold text-amber-700 uppercase tracking-wider mb-1 flex items-center gap-1">
+                          <FileText size={11} />
+                          Stocking Notes / Property Guide
+                        </p>
+                        <p className="text-sm text-amber-900 whitespace-pre-wrap leading-relaxed">
+                          {room.stockingNotes}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1010,7 +1348,11 @@ export default function PropertyDetailPage() {
             </div>
 
             {notes.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-6">No notes yet</p>
+              <EmptyState
+                icon={<FileText size={40} />}
+                title="No notes yet"
+                description="Add notes to keep a history of communications or observations about this property."
+              />
             ) : (
               <div className="space-y-3">
                 {notes.map((note) => (
@@ -1049,6 +1391,7 @@ export default function PropertyDetailPage() {
         open={showRoomModal}
         onClose={() => setShowRoomModal(false)}
         title={editingRoom ? "Edit Room" : "Add Room"}
+        size="lg"
       >
         <div className="space-y-4">
           <div>
@@ -1066,22 +1409,82 @@ export default function PropertyDetailPage() {
               ))}
             </select>
           </div>
-          <Input
-            label="Bed Configuration"
-            value={roomForm.bedConfig}
-            onChange={(e) => setRoomForm({ ...roomForm, bedConfig: e.target.value })}
-            placeholder="e.g. 1 King, 2 Twins"
-          />
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Stocking Notes</label>
-            <textarea
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              rows={3}
-              value={roomForm.stockingNotes}
-              onChange={(e) => setRoomForm({ ...roomForm, stockingNotes: e.target.value })}
-              placeholder="Towels, linens, amenities needed..."
+
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Bed Configuration"
+              value={roomForm.bedConfig}
+              onChange={(e) => setRoomForm({ ...roomForm, bedConfig: e.target.value })}
+              placeholder="e.g. 1 King, 2 Twins"
+            />
+            <Input
+              label="Bed Type"
+              value={roomForm.bedType}
+              onChange={(e) => setRoomForm({ ...roomForm, bedType: e.target.value })}
+              placeholder="e.g. King, Queen, Twin"
             />
           </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <Input
+              label="Bed Count"
+              type="number"
+              value={roomForm.bedCount}
+              onChange={(e) => setRoomForm({ ...roomForm, bedCount: e.target.value })}
+              placeholder="0"
+            />
+            <Input
+              label="Towel Count"
+              type="number"
+              value={roomForm.towelCount}
+              onChange={(e) => setRoomForm({ ...roomForm, towelCount: e.target.value })}
+              placeholder="0"
+            />
+            <Input
+              label="Floor"
+              value={roomForm.floor}
+              onChange={(e) => setRoomForm({ ...roomForm, floor: e.target.value })}
+              placeholder="e.g. 1st, 2nd, Basement"
+            />
+          </div>
+
+          <div className="flex gap-6">
+            <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={roomForm.hasRobes}
+                onChange={(e) => setRoomForm({ ...roomForm, hasRobes: e.target.checked })}
+                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+              />
+              Has Robes
+            </label>
+            <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={roomForm.hasSlippers}
+                onChange={(e) => setRoomForm({ ...roomForm, hasSlippers: e.target.checked })}
+                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+              />
+              Has Slippers
+            </label>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Stocking Notes / Property Guide
+            </label>
+            <p className="text-xs text-gray-400 mb-2">
+              Towel folding methods, display arrangements, amenity placement, and other room-specific setup details.
+            </p>
+            <textarea
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              rows={4}
+              value={roomForm.stockingNotes}
+              onChange={(e) => setRoomForm({ ...roomForm, stockingNotes: e.target.value })}
+              placeholder="e.g. Fan-fold bath towels, place 2 hand towels on vanity, stock 3 mini shampoo bottles..."
+            />
+          </div>
+
           <div className="flex justify-end gap-3 pt-4">
             <Button variant="outline" onClick={() => setShowRoomModal(false)}>
               Cancel
