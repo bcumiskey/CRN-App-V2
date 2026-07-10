@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Sun, Play, CheckCircle } from "lucide-react";
-import { api, ApiError } from "@/lib/api";
+import { ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { formatDate } from "@/lib/utils";
 import { JobCard } from "./JobCard";
+import { portalApi } from "./portal-api";
 import type { WorkerJob } from "./lib";
 
 function toast(msg: string, type: "success" | "error" = "success") {
@@ -34,7 +35,7 @@ export default function TeamPortalTodayPage() {
 
   const load = useCallback(async () => {
     try {
-      const data = await api.get<{ jobs: WorkerJob[]; date: string }>("/worker/today");
+      const data = await portalApi.get<{ jobs: WorkerJob[]; date: string }>("/worker/today");
       setJobs(data.jobs);
       setDate(data.date);
     } catch (err) {
@@ -55,7 +56,7 @@ export default function TeamPortalTodayPage() {
     }
     setUpdatingId(job.id);
     try {
-      await api.patch(`/worker/jobs/${job.id}/status`, { status });
+      await portalApi.patch(`/worker/jobs/${job.id}/status`, { status });
       toast(status === "IN_PROGRESS" ? "Job started" : "Job completed");
       await load();
     } catch (err) {

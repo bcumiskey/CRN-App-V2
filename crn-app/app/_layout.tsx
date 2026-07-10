@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { UnlockModal } from "../components/UnlockModal";
+import { WorkerLoginModal } from "../components/WorkerLoginModal";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -24,6 +25,7 @@ export default function RootLayout() {
           <Stack.Screen name="(worker)" />
         </Stack>
         <UnlockModal />
+        <WorkerLoginModal />
       </QueryClientProvider>
     </SafeAreaProvider>
   );

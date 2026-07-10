@@ -5,6 +5,15 @@ import { logAudit } from "@/lib/audit";
 import { success, created, error, validationError } from "@/lib/responses";
 import { z } from "zod";
 
+/**
+ * Never expose the password hash — replace it with a boolean flag so the
+ * admin UI can show whether portal access is configured.
+ */
+function sanitizeMember<T extends { passwordHash: string | null }>(member: T) {
+  const { passwordHash, ...safe } = member;
+  return { ...safe, hasPortalPassword: passwordHash !== null };
+}
+
 // ---------------------------------------------------------------------------
 // GET /api/team — List team members
 // ---------------------------------------------------------------------------
@@ -47,7 +56,7 @@ export async function GET(request: NextRequest) {
       return a.name.localeCompare(b.name);
     });
 
-    return success({ members: sorted });
+    return success({ members: sorted.map(sanitizeMember) });
   } catch (err) {
     console.error("[GET /api/team]", err);
     return error("Failed to fetch team members", 500);
@@ -114,7 +123,7 @@ export async function POST(request: NextRequest) {
       summary: `Created team member ${data.name} (${data.email})`,
     });
 
-    return created(member);
+    return created(sanitizeMember(member));
   } catch (err) {
     console.error("[POST /api/team]", err);
     return error("Failed to create team member", 500);

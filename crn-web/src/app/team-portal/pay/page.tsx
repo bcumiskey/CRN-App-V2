@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { Wallet, Briefcase, CalendarRange } from "lucide-react";
-import { api, ApiError } from "@/lib/api";
+import { ApiError } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { portalApi } from "../portal-api";
 
 interface WorkerPayJob {
   jobId: string;
@@ -35,7 +36,7 @@ export default function TeamPortalPayPage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const data = await api.get<WorkerPay>("/worker/pay");
+        const data = await portalApi.get<WorkerPay>("/worker/pay");
         setPay(data);
       } catch (err) {
         if (err instanceof ApiError && err.status === 404) {

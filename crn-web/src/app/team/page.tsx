@@ -10,7 +10,8 @@ import { Input } from '@/components/ui/Input'
 import Badge from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
 import v1Fetch from '@/lib/v1-compat'
-import { formatCurrency, cn } from '@/lib/utils'
+import { cn } from '@/lib/utils'
+import { PortalAccessModal, removePortalAccess } from './PortalAccessModal'
 
 function toast(msg: string, type: 'success' | 'error' = 'success') {
   const div = document.createElement('div')
@@ -27,7 +28,8 @@ interface TeamMember {
   phone: string | null
   role: string
   isActive: boolean
-  hasPassword?: boolean
+  /** Whether a Team Portal password is set (from the API; hash never sent) */
+  hasPortalPassword?: boolean
   // Supervisor fields
   rank?: number
   canSupervise?: boolean
@@ -105,27 +107,10 @@ export default function TeamPage() {
     }
   }
 
-  const handleSavePassword = async (password: string) => {
-    if (!passwordMember) return
-
-    try {
-      const response = await v1Fetch(`/api/team/${passwordMember.id}/password`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
-      })
-
-      if (response.ok) {
-        toast(`Password set for ${passwordMember.name}`)
-        setShowPasswordModal(false)
-        setPasswordMember(null)
-        fetchTeamMembers()
-      } else {
-        const error = await response.json()
-        toast(error.error || 'Failed to set password', 'error')
-      }
-    } catch (error) {
-      toast('Failed to set password', 'error')
+  const handleRemoveAccess = async (member: TeamMember, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (await removePortalAccess(member.id, member.name)) {
+      fetchTeamMembers()
     }
   }
 
@@ -287,25 +272,40 @@ export default function TeamPage() {
                         </div>
                       )}
 
-                      {/* Login Status - only for active members */}
+                      {/* Portal access - only for active members */}
                       {member.isActive && member.email && (
                         <div className="mt-3 pt-3 border-t">
-                          {member.hasPassword ? (
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2 text-sm text-green-600">
-                                <Check size={14} />
-                                <span>Login enabled</span>
+                          {member.hasPortalPassword ? (
+                            <>
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2 text-sm text-green-600">
+                                  <Check size={14} />
+                                  <span>Portal access enabled</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={(e) => handleSetPassword(member, e)}
+                                    className="text-gray-500 hover:text-gray-700"
+                                  >
+                                    <Key size={14} />
+                                    Reset
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={(e) => handleRemoveAccess(member, e)}
+                                    className="text-red-600 hover:text-red-700"
+                                  >
+                                    Remove
+                                  </Button>
+                                </div>
                               </div>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={(e) => handleSetPassword(member, e)}
-                                className="text-gray-500 hover:text-gray-700"
-                              >
-                                <Key size={14} />
-                                Reset
-                              </Button>
-                            </div>
+                              <p className="mt-1 text-xs text-gray-400">
+                                Signs in at /team-portal/login on any phone
+                              </p>
+                            </>
                           ) : (
                             <Button
                               size="sm"
@@ -313,14 +313,14 @@ export default function TeamPage() {
                               onClick={(e) => handleSetPassword(member, e)}
                             >
                               <Key size={14} />
-                              Set Password
+                              Set Portal Password
                             </Button>
                           )}
                         </div>
                       )}
                       {member.isActive && !member.email && (
                         <p className="mt-3 pt-3 border-t text-xs text-gray-400">
-                          Add email to enable login
+                          Add email to enable portal access
                         </p>
                       )}
 
@@ -393,14 +393,16 @@ export default function TeamPage() {
         member={editingMember}
       />
 
-      <SetPasswordModal
+      <PortalAccessModal
         open={showPasswordModal}
         onClose={() => {
           setShowPasswordModal(false)
           setPasswordMember(null)
         }}
-        onSave={handleSavePassword}
+        memberId={passwordMember?.id || ''}
         memberName={passwordMember?.name || ''}
+        hasPortalPassword={passwordMember?.hasPortalPassword ?? false}
+        onSaved={fetchTeamMembers}
       />
     </div>
   )
@@ -552,81 +554,3 @@ function TeamMemberModal({ open, onClose, onSave, member }: TeamMemberModalProps
   )
 }
 
-interface SetPasswordModalProps {
-  open: boolean
-  onClose: () => void
-  onSave: (password: string) => void
-  memberName: string
-}
-
-function SetPasswordModal({ open, onClose, onSave, memberName }: SetPasswordModalProps) {
-  const [password, setPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
-  const [isSaving, setIsSaving] = useState(false)
-
-  useEffect(() => {
-    if (open) {
-      setPassword('')
-      setConfirmPassword('')
-    }
-  }, [open])
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (password.length < 6) {
-      toast('Password must be at least 6 characters', 'error')
-      return
-    }
-
-    if (password !== confirmPassword) {
-      toast('Passwords do not match', 'error')
-      return
-    }
-
-    setIsSaving(true)
-    try {
-      await onSave(password)
-    } finally {
-      setIsSaving(false)
-    }
-  }
-
-  return (
-    <Modal open={open} onClose={onClose} title={`Set Password for ${memberName}`}>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <p className="text-sm text-gray-600">
-          Set a password to allow this team member to log in to the team portal.
-        </p>
-
-        <Input
-          label="Password"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Enter password"
-          required
-        />
-
-        <Input
-          label="Confirm Password"
-          type="password"
-          value={confirmPassword}
-          onChange={(e) => setConfirmPassword(e.target.value)}
-          placeholder="Confirm password"
-          required
-        />
-
-        <div className="flex justify-end gap-3 pt-4">
-          <Button type="button" variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" loading={isSaving}>
-            <Key size={16} />
-            Set Password
-          </Button>
-        </div>
-      </form>
-    </Modal>
-  )
-}

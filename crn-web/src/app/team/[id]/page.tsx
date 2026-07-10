@@ -1,21 +1,25 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import Link from "next/link";
-import { ArrowLeft, Mail, Phone, Briefcase, Calendar } from "lucide-react";
+import { ArrowLeft, Mail, Phone, Briefcase, CheckCircle, Key, Smartphone } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/Card";
 import Badge, { StatusBadge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { PortalAccessModal, portalLoginUrl, removePortalAccess } from "../PortalAccessModal";
 
-interface RecentJob {
+interface RecentAssignment {
   id: string;
-  jobNumber: string;
+  share: number;
+  jobId: string;
+  jobNumber: number;
   scheduledDate: string;
-  propertyName: string;
+  totalFee: number;
   status: string;
-  totalPay: number;
+  propertyName: string;
 }
 
 interface TeamMember {
@@ -24,32 +28,42 @@ interface TeamMember {
   role: string;
   status: string;
   defaultShare: number;
-  phone?: string;
-  email?: string;
-  totalJobs?: number;
-  recentJobs?: RecentJob[];
+  phone?: string | null;
+  email?: string | null;
+  hasPortalPassword: boolean;
+}
+
+interface TeamMemberDetail {
+  member: TeamMember;
+  recentAssignments: RecentAssignment[];
+  stats: { totalJobs: number; completedJobs: number };
 }
 
 const roleVariant: Record<string, "purple" | "info" | "success" | "warning" | "default"> = {
   admin: "purple",
   lead: "info",
   cleaner: "success",
+  worker: "success",
   trainee: "warning",
 };
 
 export default function TeamMemberDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const [member, setMember] = useState<TeamMember | null>(null);
+  const [detail, setDetail] = useState<TeamMemberDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+
+  const load = useCallback(() => {
+    return api
+      .get<TeamMemberDetail>(`/team/${id}`)
+      .then(setDetail)
+      .catch(console.error);
+  }, [id]);
 
   useEffect(() => {
-    api
-      .get<TeamMember>(`/team/${id}`)
-      .then(setMember)
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [id]);
+    load().finally(() => setLoading(false));
+  }, [load]);
 
   if (loading) {
     return (
@@ -59,7 +73,7 @@ export default function TeamMemberDetailPage() {
     );
   }
 
-  if (!member) {
+  if (!detail) {
     return (
       <div className="p-6 max-w-6xl">
         <p className="text-gray-500">Team member not found</p>
@@ -67,6 +81,15 @@ export default function TeamMemberDetailPage() {
       </div>
     );
   }
+
+  const { member, recentAssignments, stats } = detail;
+  const isActive = member.status === "active";
+
+  const handleRemoveAccess = async () => {
+    if (await removePortalAccess(member.id, member.name)) {
+      load();
+    }
+  };
 
   return (
     <div className="p-6 max-w-6xl">
@@ -101,7 +124,7 @@ export default function TeamMemberDetailPage() {
                 <div className="flex items-center gap-3">
                   <Briefcase size={20} className="text-blue-500" />
                   <div>
-                    <p className="text-2xl font-bold text-gray-900">{member.totalJobs ?? 0}</p>
+                    <p className="text-2xl font-bold text-gray-900">{stats.totalJobs}</p>
                     <p className="text-sm text-gray-500">Total Jobs</p>
                   </div>
                 </div>
@@ -110,10 +133,10 @@ export default function TeamMemberDetailPage() {
             <Card>
               <CardContent className="p-5">
                 <div className="flex items-center gap-3">
-                  <Calendar size={20} className="text-green-500" />
+                  <CheckCircle size={20} className="text-green-500" />
                   <div>
-                    <p className="text-2xl font-bold text-gray-900">{member.defaultShare}</p>
-                    <p className="text-sm text-gray-500">Default Share</p>
+                    <p className="text-2xl font-bold text-gray-900">{stats.completedJobs}</p>
+                    <p className="text-sm text-gray-500">Completed Jobs</p>
                   </div>
                 </div>
               </CardContent>
@@ -124,7 +147,7 @@ export default function TeamMemberDetailPage() {
           <Card>
             <CardContent>
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Recent Assignments</h2>
-              {!member.recentJobs || member.recentJobs.length === 0 ? (
+              {recentAssignments.length === 0 ? (
                 <p className="text-sm text-gray-400">No recent assignments</p>
               ) : (
                 <table className="w-full">
@@ -134,23 +157,23 @@ export default function TeamMemberDetailPage() {
                       <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider pb-3">Date</th>
                       <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider pb-3">Property</th>
                       <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider pb-3">Status</th>
-                      <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider pb-3">Pay</th>
+                      <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider pb-3">Job Fee</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {member.recentJobs.map((job) => (
-                      <tr key={job.id} className="hover:bg-gray-50">
+                    {recentAssignments.map((a) => (
+                      <tr key={a.id} className="hover:bg-gray-50">
                         <td className="py-3">
-                          <Link href={`/jobs/${job.id}`} className="text-sm font-medium text-blue-600 hover:underline">
-                            {job.jobNumber}
+                          <Link href={`/jobs/${a.jobId}`} className="text-sm font-medium text-blue-600 hover:underline">
+                            #{a.jobNumber}
                           </Link>
                         </td>
-                        <td className="py-3 text-sm text-gray-600">{formatDate(job.scheduledDate)}</td>
-                        <td className="py-3 text-sm text-gray-600">{job.propertyName}</td>
+                        <td className="py-3 text-sm text-gray-600">{formatDate(a.scheduledDate)}</td>
+                        <td className="py-3 text-sm text-gray-600">{a.propertyName}</td>
                         <td className="py-3">
-                          <StatusBadge status={job.status} />
+                          <StatusBadge status={a.status} />
                         </td>
-                        <td className="py-3 text-sm font-medium text-gray-900 text-right">{formatCurrency(job.totalPay)}</td>
+                        <td className="py-3 text-sm font-medium text-gray-900 text-right">{formatCurrency(a.totalFee)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -185,8 +208,73 @@ export default function TeamMemberDetailPage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Portal Access */}
+          <Card>
+            <CardContent>
+              <h2 className="text-lg font-semibold text-gray-900 mb-2 flex items-center gap-2">
+                <Smartphone size={18} className="text-gray-400" />
+                Portal access
+              </h2>
+              <p className="text-sm text-gray-500 mb-4">
+                Cleaners sign in at{" "}
+                <span className="font-medium text-gray-700 break-all">{portalLoginUrl()}</span>{" "}
+                on any phone — no app needed.
+              </p>
+
+              {!member.email ? (
+                <p className="text-sm text-gray-400">
+                  Add an email address to enable portal access.
+                </p>
+              ) : member.hasPortalPassword ? (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-sm text-green-600">
+                    <CheckCircle size={16} />
+                    <span>Portal access enabled</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setShowPasswordModal(true)}
+                    >
+                      <Key size={14} />
+                      Reset Password
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-red-600 hover:bg-red-50"
+                      onClick={handleRemoveAccess}
+                    >
+                      Remove Access
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-sm text-gray-500">
+                    No portal password set{!isActive && " (member is not active)"}.
+                  </p>
+                  <Button size="sm" onClick={() => setShowPasswordModal(true)}>
+                    <Key size={14} />
+                    Set Portal Password
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       </div>
+
+      <PortalAccessModal
+        open={showPasswordModal}
+        onClose={() => setShowPasswordModal(false)}
+        memberId={member.id}
+        memberName={member.name}
+        hasPortalPassword={member.hasPortalPassword}
+        onSaved={load}
+      />
     </div>
   );
 }
