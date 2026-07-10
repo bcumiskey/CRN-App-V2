@@ -49,6 +49,37 @@ Notes: Vercel Hobby limits crons to daily — v2.3 ships an hourly sync cron; ch
 schedule in `crn-api/vercel.json` or upgrade the plan. Previews auto-migrate their own
 (Neon-branch) database only when `PREVIEW_AUTO_MIGRATE=1` is set Preview-scoped.
 
+## Mobile app (Expo / EAS) — first distributable build
+
+The app has only ever run in dev mode (`expo start`); nothing is in cleaners'
+hands yet. `eas.json` is configured (profiles bake `EXPO_PUBLIC_API_URL` to the
+production API). To produce and hand out the first build:
+
+1. `cd crn-app`
+2. `npx eas-cli login` (browser OAuth — Bryan's Expo account; create one free at expo.dev if needed)
+3. `npx eas-cli build:configure` — links the project (writes `extra.eas.projectId`
+   into app.json; commit that change)
+4. `npx eas-cli build --platform android --profile preview` — builds an
+   installable APK on Expo's servers (~10-20 min); the output is a link/QR
+   cleaners open on their phones to install. Re-run per release.
+5. iOS later: requires an Apple Developer account ($99/yr); then
+   `--platform ios` with internal distribution via TestFlight.
+
+Notes: `assets/` doesn't exist yet — internal builds use Expo's default icon;
+add real icon/splash assets before any store submission. OTA updates
+(expo-updates) are not configured; each release is a new APK until that's set up.
+
+## Auth activation order (v2.4)
+
+1. Mobile build distributed FIRST (above) — the old dev-mode app has no unlock
+   screen and would break the moment the secret is enforced.
+2. Generate a strong passphrase locally (e.g.
+   `node -e "console.log(require('crypto').randomBytes(24).toString('base64url'))"`).
+3. Set `API_SHARED_SECRET` on the **crn-api** Vercel project (Production) → redeploy.
+4. Web + mobile prompt on next use; give Alex and the cleaners the passphrase
+   (entered once per device; "Lock this device" clears it).
+5. Rollback: remove the env var and redeploy — instantly back to open mode.
+
 ## Rollback, per layer
 
 | Layer | How |
