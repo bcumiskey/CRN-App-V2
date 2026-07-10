@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { requireAdmin } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { success, error, notFound } from "@/lib/responses";
@@ -52,32 +53,83 @@ export async function POST(
 
     // Extract event data
     const rawData = (event.rawData as Record<string, unknown>) ?? {};
+    const sourceType = (rawData.source as string) ?? "google";
+
+    // Idempotency: a job for this (source, externalId) may already exist
+    // (created by a later sync run or a concurrent assign). Link instead
+    // of creating a duplicate.
+    const existingJob = await prisma.job.findFirst({
+      where: {
+        source: sourceType,
+        externalId: event.uid,
+        status: { not: "CANCELLED" },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    if (existingJob) {
+      await prisma.unmatchedSyncEvent.update({
+        where: { id },
+        data: {
+          status: "assigned",
+          assignedPropertyId: existingJob.propertyId,
+          assignedJobId: existingJob.id,
+        },
+      });
+      return success({
+        job: existingJob,
+        event: { id, status: "assigned" },
+        alreadyExisted: true,
+      });
+    }
 
     // Create job from event data
     const jobNumber = await generateJobNumber();
-    const job = await prisma.job.create({
-      data: {
-        jobNumber,
-        propertyId,
-        scheduledDate: event.date,
-        totalFee: property.defaultJobFee ?? 0,
-        houseCutPercent: property.houseCutPercent,
-        source: (rawData.source as string) ?? "google",
-        externalId: event.uid,
-        rawSummary: event.rawSummary,
-        isBtoB: (rawData.isBtoB as boolean) ?? false,
-        syncLocked: false,
-        status: "SCHEDULED",
-        notes: (rawData.notes as string) ?? null,
-      },
-    });
+    let job;
+    try {
+      job = await prisma.job.create({
+        data: {
+          jobNumber,
+          propertyId,
+          scheduledDate: event.date,
+          totalFee: property.defaultJobFee ?? 0,
+          houseCutPercent: property.houseCutPercent,
+          source: sourceType,
+          externalId: event.uid,
+          rawSummary: event.rawSummary,
+          isBtoB: (rawData.isBtoB as boolean) ?? false,
+          syncLocked: false,
+          status: "SCHEDULED",
+          notes: (rawData.notes as string) ?? null,
+        },
+      });
+    } catch (createErr) {
+      // Unique-violation race on (source, externalId): a sync run created
+      // the job between our check and this insert — adopt it.
+      if (
+        createErr instanceof Prisma.PrismaClientKnownRequestError &&
+        createErr.code === "P2002"
+      ) {
+        job = await prisma.job.findFirst({
+          where: {
+            source: sourceType,
+            externalId: event.uid,
+            status: { not: "CANCELLED" },
+          },
+          orderBy: { createdAt: "asc" },
+        });
+        if (!job) throw createErr;
+      } else {
+        throw createErr;
+      }
+    }
 
     // Update unmatched event
     await prisma.unmatchedSyncEvent.update({
       where: { id },
       data: {
         status: "assigned",
-        assignedPropertyId: propertyId,
+        assignedPropertyId: job.propertyId,
         assignedJobId: job.id,
       },
     });
@@ -87,7 +139,7 @@ export async function POST(
       action: "create",
       entityType: "job",
       entityId: job.id,
-      summary: `Assigned unmatched event "${event.rawSummary}" to property "${property.name}" as ${jobNumber}`,
+      summary: `Assigned unmatched event "${event.rawSummary}" to property "${property.name}" as ${job.jobNumber}`,
     });
 
     return success({ job, event: { id, status: "assigned" } });

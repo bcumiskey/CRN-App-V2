@@ -26,7 +26,7 @@ export function OfflineBanner() {
   return (
     <Animated.View style={[styles.banner, { opacity }]}>
       <Text style={styles.text}>
-        You're offline. Changes will sync when you reconnect.
+        You're offline — changes won't save until you reconnect.
       </Text>
     </Animated.View>
   );

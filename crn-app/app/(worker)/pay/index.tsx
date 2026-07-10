@@ -1,10 +1,13 @@
-import { View, Text, ScrollView, StyleSheet, RefreshControl } from "react-native";
+import { View, Text, ScrollView, StyleSheet, RefreshControl, ActivityIndicator, TouchableOpacity } from "react-native";
 import { useState, useCallback } from "react";
+import { useRouter } from "expo-router";
 import { useWorkerPay } from "../../../hooks/use-worker";
+import { ApiError } from "../../../services/api";
 import { Card } from "../../../components/ui/Card";
 import { EmptyState } from "../../../components/ui/EmptyState";
 
 export default function WorkerPayScreen() {
+  const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const payQuery = useWorkerPay();
 
@@ -16,6 +19,10 @@ export default function WorkerPayScreen() {
 
   const data = payQuery.data;
 
+  // Distinct states: loading, no-open-period (404), other errors, data.
+  const isNoOpenPeriod =
+    payQuery.isError && payQuery.error instanceof ApiError && payQuery.error.status === 404;
+
   return (
     <ScrollView
       style={styles.container}
@@ -24,13 +31,37 @@ export default function WorkerPayScreen() {
     >
       <Text style={styles.title}>My Pay</Text>
 
-      {!data ? (
+      {payQuery.isPending ? (
+        <View style={styles.centerBox}>
+          <ActivityIndicator size="large" color="#2563eb" />
+          <Text style={styles.loadingText}>Loading your pay...</Text>
+        </View>
+      ) : isNoOpenPeriod ? (
+        <EmptyState
+          title="No open pay period"
+          message="The current pay period has closed and the next one hasn't started yet. Your earnings will appear here once a new period opens."
+        />
+      ) : payQuery.isError ? (
+        <EmptyState
+          title="Couldn't load your pay"
+          message="Check your connection and try again."
+          actionLabel="Retry"
+          onAction={() => payQuery.refetch()}
+        />
+      ) : !data ? (
         <EmptyState title="No pay data" message="Complete some jobs to see your earnings." />
       ) : (
         <>
-          {/* Current Period Summary */}
+          {/* Current Period Summary — tap for details + YTD */}
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => router.push(`/(worker)/pay/${data.periodId}`)}
+          >
           <Card style={styles.summaryCard}>
-            <Text style={styles.periodLabel}>{data.periodLabel}</Text>
+            <View style={styles.periodHeaderRow}>
+              <Text style={styles.periodLabel}>{data.periodLabel}</Text>
+              <Text style={styles.chevron}>›</Text>
+            </View>
             <View style={styles.statsRow}>
               <View style={styles.stat}>
                 <Text style={styles.statValue}>{data.jobsWorked}</Text>
@@ -48,6 +79,7 @@ export default function WorkerPayScreen() {
               </Text>
             </View>
           </Card>
+          </TouchableOpacity>
 
           {/* Job-by-Job Breakdown */}
           <Text style={styles.sectionTitle}>Jobs This Period</Text>
@@ -81,8 +113,12 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f9fafb" },
   content: { padding: 16, paddingBottom: 40 },
   title: { fontSize: 22, fontWeight: "700", color: "#111827", marginBottom: 16 },
+  centerBox: { alignItems: "center", paddingVertical: 48 },
+  loadingText: { marginTop: 12, fontSize: 14, color: "#6b7280" },
   summaryCard: { marginBottom: 20 },
-  periodLabel: { fontSize: 18, fontWeight: "600", color: "#111827", marginBottom: 12 },
+  periodHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
+  periodLabel: { fontSize: 18, fontWeight: "600", color: "#111827" },
+  chevron: { fontSize: 22, color: "#d1d5db" },
   statsRow: { flexDirection: "row", gap: 20, marginBottom: 12 },
   stat: {},
   statValue: { fontSize: 24, fontWeight: "700", color: "#111827" },

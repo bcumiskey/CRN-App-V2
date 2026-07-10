@@ -79,6 +79,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       isBtoB: job.isBtoB,
       notes: job.notes,
       completedDate: job.completedDate,
+      propertyId: job.propertyId,
       property: job.property
         ? {
             id: job.property.id,

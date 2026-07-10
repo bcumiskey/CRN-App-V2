@@ -7,84 +7,94 @@ import {
   Wallet,
   Menu,
 } from "lucide-react-native";
+import { ErrorBoundary } from "../../components/ErrorBoundary";
+import { OfflineBanner } from "../../components/OfflineBanner";
 
 export default function WorkerLayout() {
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: true,
-        headerStyle: { backgroundColor: "#ffffff" },
-        headerTitleStyle: { fontWeight: "600", color: "#111827" },
-        tabBarStyle: styles.tabBar,
-        tabBarActiveTintColor: "#2563eb",
-        tabBarInactiveTintColor: "#9ca3af",
-        tabBarLabelStyle: { fontSize: 11, fontWeight: "500" },
-      }}
-    >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: "Today",
-          tabBarIcon: ({ color, size }) => (
-            <ClipboardCheck size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="schedule"
-        options={{
-          title: "Schedule",
-          tabBarIcon: ({ color, size }) => (
-            <Calendar size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="add-note"
-        options={{
-          title: "",
-          tabBarIcon: () => (
-            <View style={styles.fabContainer}>
-              <View style={styles.fab}>
-                <StickyNote size={24} color="#ffffff" />
-              </View>
-            </View>
-          ),
-          tabBarLabel: () => null,
-        }}
-      />
-      <Tabs.Screen
-        name="pay"
-        options={{
-          title: "My Pay",
-          tabBarIcon: ({ color, size }) => (
-            <Wallet size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="more"
-        options={{
-          title: "More",
-          tabBarIcon: ({ color, size }) => (
-            <Menu size={size} color={color} />
-          ),
-        }}
-      />
+    <ErrorBoundary>
+      <View style={styles.root}>
+        <OfflineBanner />
+        <Tabs
+          screenOptions={{
+            headerShown: true,
+            headerStyle: { backgroundColor: "#ffffff" },
+            headerTitleStyle: { fontWeight: "600", color: "#111827" },
+            tabBarStyle: styles.tabBar,
+            tabBarActiveTintColor: "#2563eb",
+            tabBarInactiveTintColor: "#9ca3af",
+            tabBarLabelStyle: { fontSize: 11, fontWeight: "500" },
+          }}
+        >
+          <Tabs.Screen
+            name="index"
+            options={{
+              title: "Today",
+              tabBarIcon: ({ color, size }) => (
+                <ClipboardCheck size={size} color={color} />
+              ),
+            }}
+          />
+          <Tabs.Screen
+            name="schedule"
+            options={{
+              title: "Schedule",
+              tabBarIcon: ({ color, size }) => (
+                <Calendar size={size} color={color} />
+              ),
+            }}
+          />
+          <Tabs.Screen
+            name="add-note"
+            options={{
+              title: "",
+              tabBarIcon: () => (
+                <View style={styles.fabContainer}>
+                  <View style={styles.fab}>
+                    <StickyNote size={24} color="#ffffff" />
+                  </View>
+                </View>
+              ),
+              tabBarLabel: () => null,
+            }}
+          />
+          <Tabs.Screen
+            name="pay"
+            options={{
+              title: "My Pay",
+              tabBarIcon: ({ color, size }) => (
+                <Wallet size={size} color={color} />
+              ),
+            }}
+          />
+          <Tabs.Screen
+            name="more"
+            options={{
+              title: "More",
+              tabBarIcon: ({ color, size }) => (
+                <Menu size={size} color={color} />
+              ),
+            }}
+          />
 
-      {/* Hidden screens */}
-      <Tabs.Screen name="jobs/[id]" options={{ href: null, title: "Job" }} />
-      <Tabs.Screen name="properties" options={{ href: null, title: "Properties" }} />
-      <Tabs.Screen name="properties/[id]" options={{ href: null, title: "Property" }} />
-      <Tabs.Screen name="pay/[periodId]" options={{ href: null, title: "Pay Period" }} />
-      <Tabs.Screen name="profile" options={{ href: null, title: "Profile" }} />
-      <Tabs.Screen name="settings" options={{ href: null, title: "Settings" }} />
-      <Tabs.Screen name="notifications" options={{ href: null, title: "Notifications" }} />
-    </Tabs>
+          {/* Hidden screens */}
+          <Tabs.Screen name="jobs/[id]" options={{ href: null, title: "Job" }} />
+          <Tabs.Screen name="properties" options={{ href: null, title: "Properties" }} />
+          <Tabs.Screen name="properties/[id]" options={{ href: null, title: "Property" }} />
+          <Tabs.Screen name="pay/[periodId]" options={{ href: null, title: "Pay Period" }} />
+          <Tabs.Screen name="profile" options={{ href: null, title: "Profile" }} />
+          <Tabs.Screen name="settings" options={{ href: null, title: "Settings" }} />
+          <Tabs.Screen name="notifications" options={{ href: null, title: "Notifications" }} />
+        </Tabs>
+      </View>
+    </ErrorBoundary>
   );
 }
 
 const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
   tabBar: {
     height: 80,
     paddingBottom: 20,

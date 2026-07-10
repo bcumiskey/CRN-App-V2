@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
 import { success, error, notFound, validationError } from "@/lib/responses";
+import { todayYMD } from "@/lib/business-time";
 import { z } from "zod";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -68,13 +69,18 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     // Build update data
     const updateData: Record<string, unknown> = { status: newStatus };
 
-    // Set completedDate when transitioning to COMPLETED
+    // Lock the job against calendar sync — the feed must never move
+    // dates/fees of a job that has started or completed. Workers can only
+    // transition to IN_PROGRESS or COMPLETED (never back to SCHEDULED), so
+    // every worker transition locks. Mirrors the admin status route
+    // (/api/jobs/[id]/status), which documents this contract.
+    updateData.syncLocked = true;
+
+    // Set completedDate when transitioning to COMPLETED.
+    // Must be the business-timezone date (payroll sweeps by completedDate);
+    // server-local new Date() is UTC on Vercel and flips a day early evenings.
     if (newStatus === "COMPLETED") {
-      const now = new Date();
-      const yyyy = now.getFullYear();
-      const mm = String(now.getMonth() + 1).padStart(2, "0");
-      const dd = String(now.getDate()).padStart(2, "0");
-      updateData.completedDate = `${yyyy}-${mm}-${dd}`;
+      updateData.completedDate = todayYMD();
     }
 
     const updated = await prisma.job.update({

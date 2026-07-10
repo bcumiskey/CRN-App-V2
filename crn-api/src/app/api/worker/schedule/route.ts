@@ -2,23 +2,21 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
 import { success, error } from "@/lib/responses";
+import { todayYMD, addDaysYMD } from "@/lib/business-time";
 
 // ---------------------------------------------------------------------------
 // GET /api/worker/schedule — Worker's jobs in a date range
 // ---------------------------------------------------------------------------
 
 function getWeekBounds(): { startDate: string; endDate: string } {
-  const now = new Date();
-  const day = now.getDay(); // 0=Sun
-  const start = new Date(now);
-  start.setDate(now.getDate() - day);
-  const end = new Date(start);
-  end.setDate(start.getDate() + 6);
-
-  const fmt = (d: Date) =>
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-
-  return { startDate: fmt(start), endDate: fmt(end) };
+  // Default week window anchored to "today" in the business timezone
+  // (server-local new Date() is UTC on Vercel and shifts a day evenings).
+  const today = todayYMD();
+  const [y, m, d] = today.split("-").map((p) => parseInt(p, 10));
+  const dayOfWeek = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0=Sun
+  const startDate = addDaysYMD(today, -dayOfWeek);
+  const endDate = addDaysYMD(startDate, 6);
+  return { startDate, endDate };
 }
 
 export async function GET(request: NextRequest) {
@@ -71,6 +69,7 @@ export async function GET(request: NextRequest) {
       status: job.status,
       isBtoB: job.isBtoB,
       notes: job.notes,
+      propertyId: job.propertyId,
       property: job.property
         ? { id: job.property.id, name: job.property.name, address: job.property.address }
         : null,

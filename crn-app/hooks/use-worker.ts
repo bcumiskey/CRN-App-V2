@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "../services/api";
+import { Alert } from "react-native";
+import { api, ApiError } from "../services/api";
 
 // ── Worker Types (scoped — no financial data) ───────────────────
 
@@ -8,6 +9,7 @@ interface WorkerJob {
   jobNumber: string;
   propertyId: string;
   property: {
+    id: string;
     name: string;
     address?: string | null;
     accessInstructions?: string | null;
@@ -33,6 +35,7 @@ interface WorkerPayJob {
 }
 
 interface WorkerPayPeriod {
+  periodId: string;
   periodLabel: string;
   periodStatus: string;
   startDate: string;
@@ -40,6 +43,12 @@ interface WorkerPayPeriod {
   jobsWorked: number;
   totalEarned: number;
   jobs: WorkerPayJob[];
+  /** Only returned by GET /worker/pay/[periodId] */
+  ytd?: {
+    year: number;
+    totalEarned: number;
+    totalJobs: number;
+  };
 }
 
 interface WorkerProperty {
@@ -122,7 +131,12 @@ export function useWorkerPay(periodId?: string) {
 export function useWorkerProperties() {
   return useQuery({
     queryKey: ["worker", "properties"],
-    queryFn: () => api.get<WorkerProperty[]>("/worker/properties"),
+    // The API returns a { properties } envelope — unwrap it so consumers
+    // get the array they expect (the API shape is the contract).
+    queryFn: async () => {
+      const data = await api.get<{ properties: WorkerProperty[] }>("/worker/properties");
+      return data.properties;
+    },
   });
 }
 
@@ -148,9 +162,20 @@ export function useWorkerUpdateJobStatus() {
   return useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
       api.patch(`/worker/jobs/${id}/status`, { status }),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["worker", "today"] });
       queryClient.invalidateQueries({ queryKey: ["worker", "schedule"] });
+      // Refresh the detail screen the worker is standing on and their pay
+      // totals — otherwise the stale status invites a re-press that 422s.
+      queryClient.invalidateQueries({ queryKey: ["worker", "jobs", variables.id] });
+      queryClient.invalidateQueries({ queryKey: ["worker", "pay"] });
+    },
+    onError: (err) => {
+      const message =
+        err instanceof ApiError && typeof (err.data as { error?: string } | null)?.error === "string"
+          ? (err.data as { error: string }).error
+          : "Failed to update job status. Please try again.";
+      Alert.alert("Couldn't update job", message);
     },
   });
 }

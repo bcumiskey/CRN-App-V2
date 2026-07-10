@@ -30,10 +30,12 @@ and jot anything that feels wrong in the Notes line — even small stuff ("too m
       want billed yet.
 - [ ] The billing-period label is free text — change it to how you say it, e.g.
       "Jun 22 – Jul 5, 2026". Nothing forces calendar months anymore.
-- [ ] Create the invoice, then use **Print / Save as PDF** to make the document you send her.
-- [ ] Honesty note: the button that used to say "Send Email" is now **Mark as Sent** — the app
-      never actually emailed anyone, so now it just records that *you* delivered it. Does that
-      match how you want to work, or do you want real emailing built? Notes: ____________
+- [ ] Create the invoice, then press **Send**. If email is set up, the owner receives a real
+      email with the invoice attached as a PDF — the app tells you it emailed and to whom.
+      If email isn't set up yet, it says so honestly and marks the invoice as sent for you to
+      deliver yourself (use **Download PDF** or **Print / Save as PDF**).
+- [ ] Does the Send wording make sense — do you always know whether an email actually went
+      out? Notes: ____________
 
 ## 4. Recording payments
 
@@ -41,9 +43,12 @@ and jot anything that feels wrong in the Notes line — even small stuff ("too m
       checkboxes for all of them → **Mark as Paid** → set the paid date and how they paid
       (check / Venmo / Zelle / ACH / cash) → confirm. All of them flip to Paid at once.
 - [ ] Spot-check one job from a paid invoice — its "client paid" flag should now be set too.
-- [ ] Is invoice-level paid/unpaid enough, or do you also need **partial payments**
-      ("she paid $500 of the $1,400")? That's not built yet — tell us if you need it.
-      Notes: ____________
+- [ ] **Partial payments** (this is new): someone sends a few hundred toward a bigger bill —
+      open their invoice → **Record Payment** → enter the amount they sent. The invoice shows
+      "Paid $X of $Y — $Z remaining", and the owner's balance drops by exactly that amount.
+      Entered something wrong? Delete the payment and the balance comes back.
+- [ ] Does this match how people actually pay you (checks covering several invoices,
+      partial Venmo payments, etc.)? Notes: ____________
 
 ## 5. Reports (these were showing wrong numbers before — please re-judge them)
 

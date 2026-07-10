@@ -103,11 +103,27 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     const existing = await prisma.job.findUnique({ where: { id } });
     if (!existing) return notFound("Job not found");
 
+    // Manual edits to sync-managed fields lock the job so calendar sync
+    // never overwrites Alex's changes (date/fee/property/B2B). Payment
+    // bookkeeping (clientPaid, teamPaid, ...) does NOT lock.
+    const SYNC_LOCK_FIELDS = [
+      "scheduledDate",
+      "scheduledTime",
+      "totalFee",
+      "houseCutPercent",
+      "propertyId",
+      "isBtoB",
+    ] as const;
+    const shouldLock = SYNC_LOCK_FIELDS.some(
+      (field) =>
+        data[field] !== undefined && data[field] !== existing[field]
+    );
+
     const job = await prisma.job.update({
       where: { id },
       data: {
         ...data,
-        syncLocked: true,
+        ...(shouldLock ? { syncLocked: true } : {}),
       },
       include: {
         property: { select: { id: true, name: true, code: true } },

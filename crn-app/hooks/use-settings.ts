@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import type { FinancialModelConfig } from "crn-shared";
 import { api } from "../services/api";
 
 interface CompanySettings {
@@ -8,10 +9,7 @@ interface CompanySettings {
   email: string;
   phone: string;
   address: string;
-  financialModel: {
-    buckets: Array<{ name: string; percent: number; type: string }>;
-    shareLevels: Array<{ label: string; value: number }>;
-  };
+  financialModel: FinancialModelConfig;
   mileageRate: number;
   taxYear: number;
   contractor1099Threshold: number;

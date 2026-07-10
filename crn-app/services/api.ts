@@ -3,7 +3,7 @@
  * Attaches auth token (dev: hardcoded, later: Clerk).
  */
 
-const API_BASE = (process.env.EXPO_PUBLIC_API_URL || "https://crn-app-v2.vercel.app") + "/api";
+export const API_BASE = (process.env.EXPO_PUBLIC_API_URL || "https://crn-app-v2.vercel.app") + "/api";
 
 interface FetchOptions extends Omit<RequestInit, "body"> {
   body?: unknown;

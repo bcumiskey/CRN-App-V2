@@ -3,7 +3,7 @@
 ## Rollback discipline (standing policy)
 
 Every release round = one commit + one annotated tag on `main`:
-`v2.0-pre-overhaul` (anchor) → `v2.1.0` (bug overhaul) → `v2.2.0` (email/PDF/payments) → …
+`v2.0-pre-overhaul` (anchor) → `v2.1.0` (bug overhaul) → `v2.2.0` (email/PDF/payments) → `v2.3.0` (calendar-sync integrity + worker app) → …
 
 - **Code rollback:** `git revert <release commit>` (each round reverts independently), or redeploy the previous tag from Vercel's deployment list (instant).
 - **DB rollback:** migrations are additive-only (new tables/indexes, never destructive), so rolling code back is always safe against a migrated DB. Before each `prisma migrate deploy`: export via `GET /api/backup/export` AND snapshot/branch in Neon.
@@ -30,14 +30,24 @@ The preview shows zeros because the new UI needs the new API + migrated DB.
 
 1. Neon snapshot/branch + `GET /api/backup/export`.
 2. Production env vars set: `BUSINESS_TIMEZONE`; for email `RESEND_API_KEY` +
-   `EMAIL_FROM` (domain must be DNS-verified in Resend first) + optional `EMAIL_REPLY_TO`.
+   `EMAIL_FROM` (domain must be DNS-verified in Resend first) + optional `EMAIL_REPLY_TO`;
+   from v2.3: `CRON_SECRET` (calendar-sync cron rejects everything until it exists).
 3. Merge the release PR into `main` (this is the production deploy trigger).
-4. `npx prisma migrate deploy` against production (from `crn-api/` with prod `DATABASE_URL`).
-5. One-time backfills, dry-run first, then `--apply` (from `crn-api/`):
+4. **v2.3 only, before migrating:** `npx tsx prisma/dedupe-synced-jobs.ts` (dry-run →
+   review → `--apply`) — the `(source, externalId)` unique-index migration fails if
+   duplicate synced jobs exist. Duplicates with assignments/charges/line items are
+   reported for manual cleanup, never auto-touched.
+5. `npx prisma migrate deploy` against production (from `crn-api/` with prod `DATABASE_URL`).
+6. One-time backfills, dry-run first, then `--apply` (from `crn-api/`):
    - `npx tsx prisma/backfill-team-paid.ts` — **must run before Alex's next pay-period close**
    - `npx tsx prisma/backfill-invoice-payments.ts` — ledger entries for legacy paid invoices
-6. Smoke checks: invoice detail opens; Outstanding-by-Owner shows numbers;
-   record a $0.01 payment on a test invoice and delete it; reports P&L loads.
+7. Smoke checks: invoice detail opens; Outstanding-by-Owner shows numbers;
+   record a $0.01 payment on a test invoice and delete it; reports P&L loads;
+   calendar sync-all runs clean from Settings.
+
+Notes: Vercel Hobby limits crons to daily — v2.3 ships an hourly sync cron; change the
+schedule in `crn-api/vercel.json` or upgrade the plan. Previews auto-migrate their own
+(Neon-branch) database only when `PREVIEW_AUTO_MIGRATE=1` is set Preview-scoped.
 
 ## Rollback, per layer
 

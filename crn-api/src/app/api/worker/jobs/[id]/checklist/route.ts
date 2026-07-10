@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
-import { success, error, notFound, validationError } from "@/lib/responses";
+import { error, notFound, validationError } from "@/lib/responses";
 import { z } from "zod";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -9,14 +9,13 @@ type RouteContext = { params: Promise<{ id: string }> };
 // ---------------------------------------------------------------------------
 // POST /api/worker/jobs/[id]/checklist — Save checklist progress
 //
-// NOTE: The JobChecklist model is not yet in the Prisma schema.
-// This endpoint validates and returns the data structure so the mobile
-// client can be built now. Actual persistence will be wired when the
-// schema migration adds a JobChecklistProgress model.
-//
-// Pragmatic approach: store checklist state as JSON in Job.notes would
-// clobber existing notes, so we return success with the payload and
-// a flag indicating the persistence backend is pending.
+// NOT IMPLEMENTED: there is no persistence target in the Prisma schema
+// (only Checklist/ChecklistItem definition models exist — no
+// JobChecklistProgress). This endpoint used to return HTTP 200 without
+// writing anything, which would let any client believe progress was saved
+// when it was silently discarded. It now validates the payload and returns
+// 501 so no client can mistake it for a successful save. Wire real
+// persistence when a JobChecklistProgress model is added to the schema.
 // ---------------------------------------------------------------------------
 
 const checklistSchema = z.object({
@@ -75,21 +74,13 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       return error(`Invalid checklist item IDs: ${invalidItems.join(", ")}`);
     }
 
-    // TODO: Persist when JobChecklistProgress model is added to schema.
-    // For now, return the validated state so the client can track locally.
-    const totalItems = checklist.items.length;
-    const completedCount = completedItems.length;
-
-    return success({
-      jobId,
-      checklistId,
-      checklistName: checklist.name,
-      completedItems,
-      totalItems,
-      completedCount,
-      percentComplete: totalItems > 0 ? Math.round((completedCount / totalItems) * 100) : 0,
-      _note: "Checklist progress accepted. Persistence pending schema migration.",
-    });
+    // TODO: Persist when a JobChecklistProgress model is added to the schema.
+    // Until then, refuse loudly rather than pretend the save succeeded —
+    // a 200 here would silently discard the worker's checklist progress.
+    return error(
+      "Checklist progress cannot be saved yet — persistence is not implemented. Nothing was stored.",
+      501
+    );
   } catch (err) {
     console.error("[POST /api/worker/jobs/[id]/checklist]", err);
     return error("Failed to save checklist progress", 500);

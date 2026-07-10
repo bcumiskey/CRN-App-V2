@@ -1,4 +1,4 @@
-import { View, Text, ScrollView, TouchableOpacity, Linking, StyleSheet, Alert } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, Linking, StyleSheet, Alert, ActivityIndicator } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useWorkerJob, useWorkerUpdateJobStatus } from "../../../hooks/use-worker";
 import { Card } from "../../../components/ui/Card";
@@ -13,8 +13,32 @@ export default function WorkerJobDetailScreen() {
 
   const job = jobQuery.data;
 
+  if (jobQuery.isError) {
+    return (
+      <View style={styles.loading}>
+        <Text style={styles.errorTitle}>Couldn't load this job</Text>
+        <Text style={styles.errorMessage}>
+          Check your connection and try again.
+        </Text>
+        <View style={styles.errorActions}>
+          <Button variant="primary" size="md" onPress={() => jobQuery.refetch()} loading={jobQuery.isRefetching}>
+            Retry
+          </Button>
+          <Button variant="ghost" size="md" onPress={() => router.back()}>
+            Go Back
+          </Button>
+        </View>
+      </View>
+    );
+  }
+
   if (!job) {
-    return <View style={styles.loading}><Text>Loading...</Text></View>;
+    return (
+      <View style={styles.loading}>
+        <ActivityIndicator size="large" color="#2563eb" />
+        <Text style={styles.loadingText}>Loading...</Text>
+      </View>
+    );
   }
 
   const handleStatusChange = (newStatus: string) => {
@@ -121,7 +145,11 @@ export default function WorkerJobDetailScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f9fafb" },
   content: { padding: 16, paddingBottom: 40 },
-  loading: { flex: 1, justifyContent: "center", alignItems: "center" },
+  loading: { flex: 1, justifyContent: "center", alignItems: "center", padding: 24 },
+  loadingText: { marginTop: 12, fontSize: 14, color: "#6b7280" },
+  errorTitle: { fontSize: 18, fontWeight: "600", color: "#111827", marginBottom: 8, textAlign: "center" },
+  errorMessage: { fontSize: 14, color: "#6b7280", textAlign: "center", marginBottom: 20 },
+  errorActions: { gap: 10, alignSelf: "stretch" },
   header: { flexDirection: "row", gap: 8, marginBottom: 8 },
   btob: { backgroundColor: "#fff7ed", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 },
   btobText: { fontSize: 12, fontWeight: "600", color: "#ea580c" },
