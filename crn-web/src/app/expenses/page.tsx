@@ -12,44 +12,99 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { formatCurrency, formatDate } from "@/lib/utils";
 
+interface ExpenseCategory {
+  id: string;
+  name: string;
+  code: string;
+}
+
 interface Expense {
   id: string;
   date: string;
-  vendor: string;
-  category: string;
-  description?: string;
+  vendor?: string | null;
+  category: ExpenseCategory;
+  description?: string | null;
   amount: number;
-  hasReceipt: boolean;
+  receiptUrl?: string | null;
 }
 
 interface ExpenseSummary {
-  totalAmount: number;
-  count: number;
-  byCategory: Record<string, number>;
+  startDate: string;
+  endDate: string;
+  total: number;
+  totalDeductible: number;
+  byCategory: { categoryName: string; total: number }[];
+}
+
+type RangePreset = "this_month" | "last_month" | "this_year";
+
+const RANGE_OPTIONS: { value: RangePreset; label: string }[] = [
+  { value: "this_month", label: "This Month" },
+  { value: "last_month", label: "Last Month" },
+  { value: "this_year", label: "This Year" },
+];
+
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+function todayLocalYMD(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+}
+
+function rangeForPreset(preset: RangePreset): { startDate: string; endDate: string } {
+  const now = new Date();
+  let year = now.getFullYear();
+  let month = now.getMonth() + 1; // 1-based
+
+  if (preset === "this_year") {
+    return { startDate: `${year}-01-01`, endDate: `${year}-12-31` };
+  }
+
+  if (preset === "last_month") {
+    month -= 1;
+    if (month === 0) {
+      month = 12;
+      year -= 1;
+    }
+  }
+
+  const lastDay = new Date(year, month, 0).getDate();
+  return {
+    startDate: `${year}-${pad2(month)}-01`,
+    endDate: `${year}-${pad2(month)}-${pad2(lastDay)}`,
+  };
 }
 
 export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [expenseCount, setExpenseCount] = useState(0);
   const [summary, setSummary] = useState<ExpenseSummary | null>(null);
+  const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [rangePreset, setRangePreset] = useState<RangePreset>("this_month");
 
   // Form state
-  const [formDate, setFormDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [formDate, setFormDate] = useState(() => todayLocalYMD());
   const [formVendor, setFormVendor] = useState("");
-  const [formCategory, setFormCategory] = useState("Supplies");
+  const [formCategoryId, setFormCategoryId] = useState("");
   const [formDescription, setFormDescription] = useState("");
   const [formAmount, setFormAmount] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const fetchData = () => {
+  const fetchData = (preset: RangePreset) => {
     setLoading(true);
+    const { startDate, endDate } = rangeForPreset(preset);
     Promise.all([
-      api.get<{ expenses: Expense[] }>("/expenses"),
-      api.get<ExpenseSummary>("/expenses/summary"),
+      api.get<{ expenses: Expense[]; total: number }>("/expenses", { startDate, endDate, limit: 200 }),
+      api.get<ExpenseSummary>("/expenses/summary", { startDate, endDate }),
     ])
       .then(([expData, sumData]) => {
         setExpenses(expData.expenses);
+        setExpenseCount(expData.total);
         setSummary(sumData);
       })
       .catch(console.error)
@@ -57,16 +112,29 @@ export default function ExpensesPage() {
   };
 
   useEffect(() => {
-    fetchData();
+    fetchData(rangePreset);
+  }, [rangePreset]);
+
+  useEffect(() => {
+    api
+      .get<{ categories: ExpenseCategory[] }>("/expenses/categories")
+      .then((data) => {
+        setCategories(data.categories);
+        if (data.categories.length > 0) {
+          setFormCategoryId((prev) => prev || data.categories[0].id);
+        }
+      })
+      .catch(console.error);
   }, []);
 
   const handleAdd = async () => {
     setSaving(true);
+    setFormError(null);
     try {
       await api.post("/expenses", {
         date: formDate,
-        vendor: formVendor,
-        category: formCategory,
+        vendor: formVendor || undefined,
+        categoryId: formCategoryId,
         description: formDescription || undefined,
         amount: parseFloat(formAmount),
       });
@@ -74,15 +142,14 @@ export default function ExpensesPage() {
       setFormVendor("");
       setFormDescription("");
       setFormAmount("");
-      fetchData();
+      fetchData(rangePreset);
     } catch (err) {
       console.error(err);
+      setFormError("Failed to save expense. Please check the fields and try again.");
     } finally {
       setSaving(false);
     }
   };
-
-  const categories = ["Supplies", "Equipment", "Transportation", "Insurance", "Marketing", "Office", "Other"];
 
   return (
     <div className="p-6 max-w-6xl">
@@ -90,10 +157,21 @@ export default function ExpensesPage() {
         title="Expenses"
         subtitle="Track business expenses"
         actions={
-          <Button variant="primary" onClick={() => setShowModal(true)}>
-            <Plus size={16} />
-            Add Expense
-          </Button>
+          <div className="flex items-center gap-3">
+            <select
+              value={rangePreset}
+              onChange={(e) => setRangePreset(e.target.value as RangePreset)}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+            >
+              {RANGE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            <Button variant="primary" onClick={() => { setFormError(null); setShowModal(true); }}>
+              <Plus size={16} />
+              Add Expense
+            </Button>
+          </div>
         }
       />
 
@@ -103,11 +181,15 @@ export default function ExpensesPage() {
           <CardContent>
             <div className="flex items-center gap-6">
               <div>
-                <p className="text-3xl font-bold text-gray-900">{formatCurrency(summary.totalAmount)}</p>
+                <p className="text-3xl font-bold text-gray-900">{formatCurrency(summary.total)}</p>
                 <p className="text-sm text-gray-500">Total Expenses</p>
               </div>
               <div className="border-l border-gray-200 pl-6">
-                <p className="text-xl font-semibold text-gray-900">{summary.count}</p>
+                <p className="text-xl font-semibold text-gray-900">{formatCurrency(summary.totalDeductible)}</p>
+                <p className="text-sm text-gray-500">Deductible</p>
+              </div>
+              <div className="border-l border-gray-200 pl-6">
+                <p className="text-xl font-semibold text-gray-900">{expenseCount}</p>
                 <p className="text-sm text-gray-500">Entries</p>
               </div>
             </div>
@@ -142,14 +224,14 @@ export default function ExpensesPage() {
               {expenses.map((exp) => (
                 <tr key={exp.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-6 py-4 text-sm text-gray-600">{formatDate(exp.date)}</td>
-                  <td className="px-6 py-4 text-sm font-medium text-gray-900">{exp.vendor}</td>
+                  <td className="px-6 py-4 text-sm font-medium text-gray-900">{exp.vendor || "-"}</td>
                   <td className="px-6 py-4">
-                    <Badge>{exp.category}</Badge>
+                    <Badge>{exp.category?.name ?? "Uncategorized"}</Badge>
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-600">{exp.description || "-"}</td>
                   <td className="px-6 py-4 text-sm font-semibold text-gray-900 text-right">{formatCurrency(exp.amount)}</td>
                   <td className="px-6 py-4 text-center">
-                    {exp.hasReceipt && <Paperclip size={14} className="text-blue-500 mx-auto" />}
+                    {exp.receiptUrl && <Paperclip size={14} className="text-blue-500 mx-auto" />}
                   </td>
                 </tr>
               ))}
@@ -177,12 +259,13 @@ export default function ExpensesPage() {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
             <select
-              value={formCategory}
-              onChange={(e) => setFormCategory(e.target.value)}
+              value={formCategoryId}
+              onChange={(e) => setFormCategoryId(e.target.value)}
               className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
             >
+              {categories.length === 0 && <option value="">Loading categories...</option>}
               {categories.map((cat) => (
-                <option key={cat} value={cat}>{cat}</option>
+                <option key={cat.id} value={cat.id}>{cat.name}</option>
               ))}
             </select>
           </div>
@@ -200,6 +283,9 @@ export default function ExpensesPage() {
             onChange={(e) => setFormAmount(e.target.value)}
             placeholder="0.00"
           />
+          {formError && (
+            <p className="text-sm text-red-600">{formError}</p>
+          )}
           <div className="flex gap-3 pt-2">
             <Button variant="outline" className="flex-1" onClick={() => setShowModal(false)}>
               Cancel
@@ -208,7 +294,7 @@ export default function ExpensesPage() {
               variant="primary"
               className="flex-1"
               onClick={handleAdd}
-              disabled={saving || !formVendor || !formAmount}
+              disabled={saving || !formVendor || !formAmount || !formCategoryId}
               loading={saving}
             >
               Add Expense

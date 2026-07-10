@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { success, error, notFound, validationError } from "@/lib/responses";
+import { bankersRound } from "crn-shared";
 import { z } from "zod";
 
 type RouteContext = { params: Promise<{ id: string; lid: string }> };
@@ -58,34 +59,20 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       data,
     });
 
-    // If amount changed and line item is linked to a job, sync job totalFee
-    if (data.amount !== undefined && data.amount !== lineItem.amount && lineItem.jobId) {
-      await prisma.job.update({
-        where: { id: lineItem.jobId },
-        data: { totalFee: data.amount },
-      });
-
-      await logAudit({
-        userId: result.user.userId,
-        action: "update",
-        entityType: "job",
-        entityId: lineItem.jobId,
-        summary: `Synced job totalFee to ${data.amount} from invoice line item update`,
-        details: { previousAmount: lineItem.amount, newAmount: data.amount },
-      });
-    }
+    // NOTE: editing an invoice line item must never rewrite the linked job's
+    // totalFee — that is a payroll/report input, not a billing figure.
 
     // Recalculate invoice totals
     const allLineItems = await prisma.invoiceLineItem.findMany({
       where: { invoiceId: id },
       select: { amount: true },
     });
-    const newSubtotal = allLineItems.reduce((sum, li) => sum + li.amount, 0);
+    const newSubtotal = bankersRound(allLineItems.reduce((sum, li) => sum + li.amount, 0));
     await prisma.invoice.update({
       where: { id },
       data: {
         subtotal: newSubtotal,
-        total: newSubtotal - invoice.discount,
+        total: bankersRound(newSubtotal - invoice.discount),
       },
     });
 
@@ -154,12 +141,12 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
       where: { invoiceId: id },
       select: { amount: true },
     });
-    const newSubtotal = allLineItems.reduce((sum, li) => sum + li.amount, 0);
+    const newSubtotal = bankersRound(allLineItems.reduce((sum, li) => sum + li.amount, 0));
     await prisma.invoice.update({
       where: { id },
       data: {
         subtotal: newSubtotal,
-        total: newSubtotal - invoice.discount,
+        total: bankersRound(newSubtotal - invoice.discount),
       },
     });
 

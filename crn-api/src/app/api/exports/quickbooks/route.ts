@@ -35,10 +35,12 @@ export async function POST(request: NextRequest) {
     ]);
 
     // --- Invoices → Invoice type ---
+    // Only issued invoices count as revenue: exclude drafts (never sent to
+    // a client) as well as voided invoices.
     const invoices = await prisma.invoice.findMany({
       where: {
         invoiceDate: { gte: range.startDate, lte: range.endDate },
-        status: { not: "void" },
+        status: { in: ["sent", "viewed", "paid", "overdue"] },
       },
       include: {
         owner: { select: { name: true } },
@@ -53,8 +55,22 @@ export async function POST(request: NextRequest) {
           inv.invoiceDate,
           inv.invoiceNumber,
           inv.owner.name,
-          csvEscape(li.description),
+          li.description,
           String(r2(li.amount)),
+          "Cleaning Revenue",
+        ]);
+      }
+
+      // Emit the invoice discount as a negative revenue row so the invoice
+      // rows sum to inv.total and reconcile with the Payment row.
+      if (inv.discount > 0) {
+        rows.push([
+          "Invoice",
+          inv.invoiceDate,
+          inv.invoiceNumber,
+          inv.owner.name,
+          "Discount",
+          String(r2(-inv.discount)),
           "Cleaning Revenue",
         ]);
       }
@@ -102,7 +118,7 @@ export async function POST(request: NextRequest) {
         exp.date,
         "",
         exp.vendor ?? "",
-        csvEscape(exp.description ?? categoryName),
+        exp.description ?? categoryName,
         String(r2(exp.amount)),
         categoryName,
       ]);
@@ -135,8 +151,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Build CSV string
-    const csv = rows.map((row) => row.join(",")).join("\n");
+    // Build CSV string — escape every cell (names and descriptions can
+    // contain commas/quotes)
+    const csv = rows.map((row) => row.map(csvEscape).join(",")).join("\n");
 
     return success({
       ...range,

@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { format, parseISO } from 'date-fns'
+import { format, parseISO, startOfWeek, endOfWeek } from 'date-fns'
 import {
   Calendar,
   Plus,
@@ -214,6 +214,9 @@ function JobsPageContent() {
 
   // Expanded jobs state (for mobile-friendly expand/collapse)
   const [expandedJobs, setExpandedJobs] = useState<Set<string>>(new Set())
+
+  // Week section overrides — weeks before the current week start collapsed
+  const [weekOverrides, setWeekOverrides] = useState<Record<string, boolean>>({})
 
   const toggleJobExpanded = (jobId: string) => {
     setExpandedJobs(prev => {
@@ -522,10 +525,12 @@ function JobsPageContent() {
 
   const prevMonth = () => {
     setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1))
+    setWeekOverrides({})
   }
 
   const nextMonth = () => {
     setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1))
+    setWeekOverrides({})
   }
 
   // Group jobs by date
@@ -537,6 +542,24 @@ function JobsPageContent() {
   }, {} as Record<string, Job[]>)
 
   const sortedDates = Object.keys(jobsByDate).sort()
+
+  // Group dates into week sections (Sunday start)
+  const weekKeyOf = (dateKey: string) => format(startOfWeek(parseISO(dateKey)), 'yyyy-MM-dd')
+  const weeks: { weekKey: string; dates: string[] }[] = []
+  for (const dateKey of sortedDates) {
+    const wk = weekKeyOf(dateKey)
+    const last = weeks[weeks.length - 1]
+    if (last && last.weekKey === wk) {
+      last.dates.push(dateKey)
+    } else {
+      weeks.push({ weekKey: wk, dates: [dateKey] })
+    }
+  }
+  const currentWeekKey = format(startOfWeek(new Date()), 'yyyy-MM-dd')
+  const isWeekExpanded = (weekKey: string) => weekOverrides[weekKey] ?? weekKey >= currentWeekKey
+  const toggleWeek = (weekKey: string) => {
+    setWeekOverrides(prev => ({ ...prev, [weekKey]: !isWeekExpanded(weekKey) }))
+  }
 
   const activeSchedules = schedules.filter(s => s.isActive)
 
@@ -661,7 +684,29 @@ function JobsPageContent() {
           </Card>
         ) : (
           <div className="space-y-4">
-            {sortedDates.map(dateKey => (
+            {weeks.map(({ weekKey, dates }) => {
+              const weekJobs = dates.flatMap(d => jobsByDate[d])
+              const weekRevenue = weekJobs.reduce((sum, j) => sum + j.rate, 0)
+              const weekCompleted = weekJobs.filter(j => j.completed).length
+              const expanded = isWeekExpanded(weekKey)
+              return (
+                <div key={weekKey}>
+                  <button
+                    onClick={() => toggleWeek(weekKey)}
+                    className="w-full flex items-center justify-between bg-gray-100 hover:bg-gray-200 rounded-lg px-3 py-2 mb-2 transition-colors"
+                  >
+                    <span className="text-sm font-semibold text-gray-700">
+                      Week of {format(parseISO(weekKey), 'MMM d')} – {format(endOfWeek(parseISO(weekKey)), 'MMM d')}
+                    </span>
+                    <span className="flex items-center gap-3 text-xs text-gray-500">
+                      <span>{weekCompleted}/{weekJobs.length} done</span>
+                      <span className="font-medium text-gray-700">{formatCurrency(weekRevenue)}</span>
+                      {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                    </span>
+                  </button>
+                  {expanded && (
+                    <div className="space-y-4">
+                      {dates.map(dateKey => (
               <div key={dateKey}>
                 <h4 className="text-sm font-semibold text-gray-500 mb-2 px-1">
                   {format(parseISO(dateKey), 'EEEE, MMMM d')}
@@ -893,7 +938,12 @@ function JobsPageContent() {
                   })}
                 </div>
               </div>
-            ))}
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
           </>

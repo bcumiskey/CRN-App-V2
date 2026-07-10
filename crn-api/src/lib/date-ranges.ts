@@ -1,10 +1,12 @@
 /**
  * Date range resolution for report endpoints.
  *
- * All dates are YYYY-MM-DD strings. We avoid timezone-sensitive Date
- * conversions for the date portion — only `new Date()` is used to learn
- * the current year/month/day, then everything is formatted manually.
+ * All dates are YYYY-MM-DD strings. The current year/month/day comes from
+ * `todayParts()` (business timezone — the server runs UTC), then everything
+ * is formatted manually.
  */
+
+import { todayParts } from "@/lib/business-time";
 
 function pad2(n: number): string {
   return String(n).padStart(2, "0");
@@ -48,10 +50,7 @@ export function resolveDateRange(
     return { startDate, endDate };
   }
 
-  const now = new Date();
-  const curYear = now.getFullYear();
-  const curMonth = now.getMonth() + 1; // 1-based
-  const curDay = now.getDate();
+  const { year: curYear, month: curMonth, day: curDay } = todayParts();
 
   const key = preset || "this_month";
 

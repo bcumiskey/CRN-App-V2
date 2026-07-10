@@ -20,7 +20,6 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     const invoice = await prisma.invoice.findUnique({
       where: { id },
       include: {
-        owner: { select: { id: true, name: true, email: true } },
         lineItems: { select: { jobId: true } },
       },
     });
@@ -51,24 +50,15 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       });
     }
 
-    // Create communication log entry (email sending stubbed)
-    await prisma.communicationLog.create({
-      data: {
-        type: "invoice_email",
-        recipientEmail: invoice.owner.email,
-        subject: `Invoice ${invoice.invoiceNumber}`,
-        entityType: "invoice",
-        entityId: invoice.id,
-        status: "sent",
-      },
-    });
+    // NOTE: no email is actually delivered by this endpoint — it only marks
+    // the invoice as sent. Do not log a CommunicationLog row claiming one was.
 
     await logAudit({
       userId: result.user.userId,
       action: "send",
       entityType: "invoice",
       entityId: id,
-      summary: `Sent invoice ${invoice.invoiceNumber} to ${invoice.owner.name}`,
+      summary: `Marked invoice ${invoice.invoiceNumber} as sent`,
     });
 
     return success(updated);

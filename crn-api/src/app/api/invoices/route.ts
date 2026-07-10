@@ -4,6 +4,8 @@ import { requireAdmin } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { success, created, error, validationError } from "@/lib/responses";
 import { generateInvoiceNumber } from "@/lib/job-numbers";
+import { dueDateFromTerms } from "@/lib/business-time";
+import { bankersRound } from "crn-shared";
 import { z } from "zod";
 
 // ---------------------------------------------------------------------------
@@ -76,9 +78,11 @@ const createInvoiceSchema = z.object({
   ownerId: z.string().min(1),
   type: z.enum(["per_job", "monthly", "custom"]),
   invoiceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Must be YYYY-MM-DD"),
+  dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   propertyId: z.string().optional(),
   billingPeriod: z.string().optional(),
   paymentTerms: z.string().optional(),
+  discount: z.number().min(0).optional(),
   notes: z.string().optional(),
   internalNotes: z.string().optional(),
   lineItems: z.array(lineItemSchema).optional(),
@@ -110,10 +114,13 @@ export async function POST(request: NextRequest) {
 
     const invoiceNumber = await generateInvoiceNumber();
     const paymentTerms = data.paymentTerms ?? owner.paymentTerms;
+    const dueDate = data.dueDate ?? dueDateFromTerms(data.invoiceDate, paymentTerms);
 
     // Calculate totals from line items
     const lineItems = data.lineItems ?? [];
-    const subtotal = lineItems.reduce((sum, li) => sum + li.amount, 0);
+    const subtotal = bankersRound(lineItems.reduce((sum, li) => sum + li.amount, 0));
+    const discount = data.discount ?? 0;
+    const total = bankersRound(subtotal - discount);
 
     const invoice = await prisma.invoice.create({
       data: {
@@ -123,9 +130,11 @@ export async function POST(request: NextRequest) {
         type: data.type,
         billingPeriod: data.billingPeriod,
         invoiceDate: data.invoiceDate,
+        dueDate,
         paymentTerms,
         subtotal,
-        total: subtotal,
+        discount,
+        total,
         notes: data.notes,
         internalNotes: data.internalNotes,
         lineItems: lineItems.length > 0

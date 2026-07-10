@@ -30,3 +30,6 @@ prisma/migrations/**/migration_lock.toml
 
 # Test
 coverage/
+
+# TypeScript incremental build artifacts
+*.tsbuildinfo

@@ -4,6 +4,8 @@ import { requireAdmin } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { created, error, validationError } from "@/lib/responses";
 import { generateInvoiceNumber } from "@/lib/job-numbers";
+import { todayYMD, dueDateFromTerms } from "@/lib/business-time";
+import { bankersRound } from "crn-shared";
 import { z } from "zod";
 
 // ---------------------------------------------------------------------------
@@ -73,7 +75,8 @@ export async function POST(request: NextRequest) {
     const jobs = await prisma.job.findMany({
       where: {
         status: "COMPLETED",
-        invoiceLineItems: { none: {} },
+        // Jobs whose only line items sit on voided invoices are billable again
+        invoiceLineItems: { none: { invoice: { status: { not: "void" } } } },
         property: { ownerId: data.ownerId },
         scheduledDate: {
           gte: dateRange.startDate,
@@ -82,6 +85,7 @@ export async function POST(request: NextRequest) {
       },
       include: {
         property: { select: { id: true, name: true } },
+        charges: true,
       },
       orderBy: { scheduledDate: "asc" },
     });
@@ -91,19 +95,39 @@ export async function POST(request: NextRequest) {
     }
 
     const invoiceNumber = await generateInvoiceNumber();
-    const today = new Date().toISOString().split("T")[0];
+    const today = todayYMD();
 
-    // Build line items from jobs
-    const lineItems = jobs.map((job, idx) => ({
-      description: `${job.property.name} - ${job.jobType} (${job.scheduledDate})`,
-      amount: job.totalFee,
-      date: job.scheduledDate,
-      jobId: job.id,
-      category: "cleaning",
-      sortOrder: idx,
-    }));
+    // Build line items from jobs: one per job, plus one per extra charge
+    const lineItems: {
+      description: string;
+      amount: number;
+      date: string;
+      jobId: string;
+      category: string;
+      sortOrder: number;
+    }[] = [];
+    for (const job of jobs) {
+      lineItems.push({
+        description: `${job.property.name} - ${job.jobType} (${job.scheduledDate})`,
+        amount: job.totalFee,
+        date: job.scheduledDate,
+        jobId: job.id,
+        category: "cleaning",
+        sortOrder: lineItems.length,
+      });
+      for (const charge of job.charges) {
+        lineItems.push({
+          description: charge.reason,
+          amount: charge.amount,
+          date: job.scheduledDate,
+          jobId: job.id,
+          category: "extra_charge",
+          sortOrder: lineItems.length,
+        });
+      }
+    }
 
-    const subtotal = lineItems.reduce((sum, li) => sum + li.amount, 0);
+    const subtotal = bankersRound(lineItems.reduce((sum, li) => sum + li.amount, 0));
 
     const invoice = await prisma.invoice.create({
       data: {
@@ -112,6 +136,7 @@ export async function POST(request: NextRequest) {
         type: "monthly",
         billingPeriod: data.billingPeriod,
         invoiceDate: today,
+        dueDate: dueDateFromTerms(today, owner.paymentTerms),
         paymentTerms: owner.paymentTerms,
         subtotal,
         total: subtotal,

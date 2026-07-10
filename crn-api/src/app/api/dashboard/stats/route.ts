@@ -2,6 +2,9 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
 import { success, error } from "@/lib/responses";
+import { todayParts } from "@/lib/business-time";
+import { loadFinancialModel, r2 } from "@/lib/report-utils";
+import { calculateJob } from "crn-shared";
 
 // ---------------------------------------------------------------------------
 // GET /api/dashboard/stats — Dashboard summary stats
@@ -12,21 +15,22 @@ export async function GET(request: NextRequest) {
   const result = await requireAdmin(request);
   if (result.error) return result.error;
 
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const { year, month: monthNum } = todayParts();
+  const month = String(monthNum).padStart(2, "0");
   const monthStart = `${year}-${month}-01`;
-  const nextMonth = now.getMonth() === 11
+  const nextMonth = monthNum === 12
     ? `${year + 1}-01-01`
-    : `${year}-${String(now.getMonth() + 2).padStart(2, "0")}-01`;
+    : `${year}-${String(monthNum + 1).padStart(2, "0")}-01`;
 
   try {
+    const financialModel = await loadFinancialModel(prisma);
+
     const [
       jobsThisMonth,
       jobsCompleted,
       revenueResult,
-      pendingFromClientsResult,
-      owedToTeamResult,
+      uninvoicedJobs,
+      unpaidTeamJobs,
       draftInvoices,
       outstandingInvoices,
       outstandingResult,
@@ -53,16 +57,30 @@ export async function GET(request: NextRequest) {
         _sum: { totalFee: true },
       }),
 
-      // Pending from clients: completed jobs NOT client-paid (all time)
-      prisma.job.aggregate({
+      // Completed jobs not yet invoiced or client-paid (all time) — the
+      // uninvoiced half of "pending from clients"
+      prisma.job.findMany({
         where: { status: "COMPLETED", clientPaid: false },
-        _sum: { totalFee: true },
+        select: {
+          totalFee: true,
+          charges: { select: { amount: true } },
+        },
       }),
 
-      // Owed to team: completed jobs NOT team-paid (all time)
-      prisma.job.aggregate({
-        where: { status: "COMPLETED", teamPaid: false },
-        _sum: { totalFee: true },
+      // Completed/invoiced jobs the team hasn't been paid for (all time)
+      prisma.job.findMany({
+        where: {
+          status: { in: ["COMPLETED", "INVOICED"] },
+          teamPaid: false,
+        },
+        include: {
+          assignments: {
+            include: {
+              user: { select: { id: true, name: true, isOwner: true } },
+            },
+          },
+          charges: { select: { amount: true } },
+        },
       }),
 
       // Draft invoices count
@@ -70,23 +88,60 @@ export async function GET(request: NextRequest) {
         where: { status: "draft" },
       }),
 
-      // Outstanding invoices (sent or overdue)
+      // Outstanding invoices (sent, viewed, or overdue)
       prisma.invoice.count({
-        where: { status: { in: ["sent", "overdue"] } },
+        where: { status: { in: ["sent", "viewed", "overdue"] } },
       }),
 
       // Outstanding amount
       prisma.invoice.aggregate({
-        where: { status: { in: ["sent", "overdue"] } },
+        where: { status: { in: ["sent", "viewed", "overdue"] } },
         _sum: { total: true },
       }),
     ]);
 
+    // Pending from clients: uninvoiced completed job value (fee + extra
+    // charges) PLUS open invoice totals — sending an invoice moves the job
+    // from the first sum to the second instead of vanishing.
+    const uninvoicedValue = uninvoicedJobs.reduce(
+      (sum, j) =>
+        sum + j.totalFee + j.charges.reduce((s, c) => s + c.amount, 0),
+      0
+    );
+    const pendingFromClients = r2(
+      uninvoicedValue + (outstandingResult._sum.total ?? 0)
+    );
+
+    // Owed to team: the workers' share of each unpaid job (worker pool +
+    // owner payouts — exactly what pay statements freeze at period close),
+    // not the full job fee.
+    let owedToTeam = 0;
+    for (const job of unpaidTeamJobs) {
+      if (job.assignments.length === 0) continue;
+
+      const jobResult = calculateJob(financialModel, {
+        totalFee: job.totalFee,
+        houseCutPercent: job.houseCutPercent,
+        charges: job.charges.map((c) => ({ amount: c.amount })),
+        assignments: job.assignments.map((a) => ({
+          userId: a.userId,
+          userName: a.user.name,
+          share: a.share,
+          isOwner: a.user.isOwner,
+        })),
+      });
+
+      for (const wp of jobResult.workerPayments) {
+        owedToTeam += wp.totalPay;
+      }
+    }
+    owedToTeam = r2(owedToTeam);
+
     return success({
       // V1-compatible fields
       monthlyRevenue: revenueResult._sum.totalFee ?? 0,
-      pendingFromClients: pendingFromClientsResult._sum.totalFee ?? 0,
-      owedToTeam: owedToTeamResult._sum.totalFee ?? 0,
+      pendingFromClients,
+      owedToTeam,
       draftInvoices,
       lowStockItems: 0, // TODO: compute from linens when inventory is tracked
 

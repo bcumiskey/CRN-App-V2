@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { success, error, notFound, validationError } from "@/lib/responses";
+import { bankersRound } from "crn-shared";
 import { z } from "zod";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -87,7 +88,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     // Recalculate total if discount changed
     const updateData: Record<string, unknown> = { ...data };
     if (data.discount !== undefined) {
-      updateData.total = existing.subtotal - data.discount;
+      updateData.total = bankersRound(existing.subtotal - data.discount);
     }
 
     const invoice = await prisma.invoice.update({

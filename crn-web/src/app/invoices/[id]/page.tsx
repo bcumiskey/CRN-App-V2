@@ -2,19 +2,24 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter, useParams } from 'next/navigation'
-import { ArrowLeft, Printer, Send, CheckCircle, Download, Mail, Pencil, Trash2, Loader2, Check } from 'lucide-react'
+import { ArrowLeft, Printer, Send, CheckCircle, Pencil, Trash2, Check } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import InvoiceTemplate from '@/components/documents/InvoiceTemplate'
-import { cn, formatCurrency } from '@/lib/utils'
+import { cn, formatCurrency, formatDate } from '@/lib/utils'
 import v1Fetch from '@/lib/v1-compat'
 
 function toast(msg: string, type: 'success' | 'error' = 'success') {
   const div = document.createElement('div')
   div.className = `fixed top-4 right-4 z-50 px-4 py-2 rounded-lg shadow-lg text-white text-sm ${type === 'error' ? 'bg-red-600' : 'bg-green-600'}`
   div.textContent = msg; document.body.appendChild(div); setTimeout(() => div.remove(), 3000)
+}
+
+function todayLocalYMD() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 const PAYMENT_METHODS = [
@@ -44,6 +49,7 @@ interface Invoice {
   total: number
   status: string
   paymentMethod?: string | null
+  paidDate?: string | null
   notes?: string | null
   lineItems: LineItem[]
   property: {
@@ -76,8 +82,6 @@ export default function InvoiceViewPage() {
   const [company, setCompany] = useState<CompanySettings | null>(null)
   const [loading, setLoading] = useState(true)
   const [isUpdating, setIsUpdating] = useState(false)
-  const [isSending, setIsSending] = useState(false)
-  const [isDownloading, setIsDownloading] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('')
@@ -116,80 +120,24 @@ export default function InvoiceViewPage() {
     window.print()
   }, [])
 
-  const handleDownloadPDF = useCallback(async () => {
-    if (!invoice || isDownloading) return
-
-    setIsDownloading(true)
-    toast('Generating PDF...')
-
-    try {
-      const res = await v1Fetch(`/api/invoices/${invoice.id}/pdf`)
-      if (!res.ok) throw new Error('Failed to generate PDF')
-
-      const blob = await res.blob()
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${invoice.invoiceNumber}.pdf`
-      document.body.appendChild(a)
-      a.click()
-      window.URL.revokeObjectURL(url)
-      document.body.removeChild(a)
-
-      toast('PDF downloaded')
-    } catch (error) {
-      toast('Failed to download PDF', 'error')
-    } finally {
-      setIsDownloading(false)
-    }
-  }, [invoice, isDownloading])
-
-  const handleSendEmail = async () => {
+  const handleMarkSent = async () => {
     if (!invoice) return
-
-    if (!invoice.property?.ownerEmail) {
-      toast('Property owner has no email address', 'error')
-      return
-    }
-
-    setIsSending(true)
+    setIsUpdating(true)
 
     try {
       const res = await v1Fetch(`/api/invoices/${invoice.id}/send`, {
         method: 'POST',
       })
 
-      if (!res.ok) {
-        const error = await res.json()
-        throw new Error(error.error || 'Failed to send')
-      }
-
-      setInvoice({ ...invoice, status: 'sent' })
-      toast(`Invoice sent to ${invoice.property?.ownerEmail}`)
-    } catch (error) {
-      toast(error instanceof Error ? error.message : 'Failed to send invoice', 'error')
-    } finally {
-      setIsSending(false)
-    }
-  }
-
-  const handleMarkSent = async () => {
-    if (!invoice) return
-    setIsUpdating(true)
-
-    try {
-      const res = await v1Fetch(`/api/invoices/${invoice.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'sent' }),
-      })
-
       if (res.ok) {
         setInvoice({ ...invoice, status: 'sent' })
-        toast('Invoice marked as sent')
+        toast('Invoice marked as sent — no email goes out, so deliver it to the owner yourself (Print / Save as PDF)')
+      } else {
+        const error = await res.json()
+        toast(error.error || 'Failed to mark invoice as sent', 'error')
       }
     } catch (error) {
-      toast('Failed to update invoice', 'error')
+      toast('Failed to mark invoice as sent', 'error')
     } finally {
       setIsUpdating(false)
     }
@@ -200,44 +148,24 @@ export default function InvoiceViewPage() {
     setIsUpdating(true)
 
     try {
-      const res = await v1Fetch(`/api/invoices/${invoice.id}`, {
-        method: 'PUT',
+      const paidDate = todayLocalYMD()
+      const res = await v1Fetch(`/api/invoices/${invoice.id}/mark-paid`, {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'paid', paymentMethod }),
+        body: JSON.stringify({ paidDate, paymentMethod }),
       })
 
       if (res.ok) {
-        setInvoice({ ...invoice, status: 'paid', paymentMethod })
+        setInvoice({ ...invoice, status: 'paid', paymentMethod, paidDate })
         toast(`Invoice marked as paid via ${PAYMENT_METHODS.find(p => p.value === paymentMethod)?.label}`)
         setShowPaymentModal(false)
         setSelectedPaymentMethod('')
+      } else {
+        const error = await res.json()
+        toast(error.error || 'Failed to mark invoice as paid', 'error')
       }
     } catch (error) {
-      toast('Failed to update invoice', 'error')
-    } finally {
-      setIsUpdating(false)
-    }
-  }
-
-  const handleClearPayment = async () => {
-    if (!invoice) return
-    setIsUpdating(true)
-
-    try {
-      const res = await v1Fetch(`/api/invoices/${invoice.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'sent', paymentMethod: null }),
-      })
-
-      if (res.ok) {
-        setInvoice({ ...invoice, status: 'sent', paymentMethod: null })
-        toast('Payment cleared - invoice marked as sent')
-        setShowPaymentModal(false)
-        setSelectedPaymentMethod('')
-      }
-    } catch (error) {
-      toast('Failed to update invoice', 'error')
+      toast('Failed to mark invoice as paid', 'error')
     } finally {
       setIsUpdating(false)
     }
@@ -328,24 +256,13 @@ export default function InvoiceViewPage() {
                   </Button>
                 )}
 
-                {/* Send Email - only for draft with owner email */}
-                {invoice.status === 'draft' && invoice.property?.ownerEmail && (
+                {/* Mark as Sent - drafts only. No email goes out — Alex delivers the invoice herself. */}
+                {invoice.status === 'draft' && (
                   <Button
                     variant="primary"
-                    onClick={handleSendEmail}
-                    disabled={isSending}
-                  >
-                    <Mail size={16} />
-                    {isSending ? 'Sending...' : 'Send Email'}
-                  </Button>
-                )}
-
-                {/* Mark as Sent - only for draft without owner email */}
-                {invoice.status === 'draft' && !invoice.property?.ownerEmail && (
-                  <Button
-                    variant="outline"
                     onClick={handleMarkSent}
                     disabled={isUpdating}
+                    title="Marks the invoice as sent. No email is sent — deliver it to the owner yourself (Print / Save as PDF)."
                   >
                     <Send size={16} />
                     {isUpdating ? 'Updating...' : 'Mark as Sent'}
@@ -363,39 +280,19 @@ export default function InvoiceViewPage() {
                   </Button>
                 )}
 
-                {/* Show payment method if paid - clickable to edit */}
+                {/* Paid indicator */}
                 {invoice.status === 'paid' && (
-                  <button
-                    onClick={() => setShowPaymentModal(true)}
-                    className="px-3 py-1.5 bg-green-100 text-green-800 rounded-lg text-sm font-medium hover:bg-green-200 transition-colors"
-                  >
-                    Paid via {PAYMENT_METHODS.find(p => p.value === invoice.paymentMethod)?.label || 'Unknown'}
-                  </button>
+                  <span className="px-3 py-1.5 bg-green-100 text-green-800 rounded-lg text-sm font-medium inline-flex items-center">
+                    <CheckCircle size={14} className="mr-1" />
+                    Paid{invoice.paidDate ? ` on ${formatDate(invoice.paidDate)}` : ''}
+                    {invoice.paymentMethod ? ` via ${PAYMENT_METHODS.find(p => p.value === invoice.paymentMethod)?.label || invoice.paymentMethod}` : ''}
+                  </span>
                 )}
 
-                {/* PDF Download */}
-                <Button
-                  variant="outline"
-                  onClick={handleDownloadPDF}
-                  disabled={isDownloading}
-                >
-                  {isDownloading ? (
-                    <>
-                      <Loader2 size={16} className="animate-spin" />
-                      Generating...
-                    </>
-                  ) : (
-                    <>
-                      <Download size={16} />
-                      PDF
-                    </>
-                  )}
-                </Button>
-
-                {/* Print */}
+                {/* Print / Save as PDF — uses the browser print dialog */}
                 <Button variant="outline" onClick={handlePrint}>
                   <Printer size={16} />
-                  Print
+                  Print / Save as PDF
                 </Button>
 
                 {/* Delete - only for draft invoices */}
@@ -459,7 +356,7 @@ export default function InvoiceViewPage() {
           setShowPaymentModal(false)
           setSelectedPaymentMethod('')
         }}
-        title={invoice?.status === 'paid' ? 'Update Payment' : 'Mark Invoice as Paid'}
+        title="Mark Invoice as Paid"
         size="sm"
       >
         <div className="space-y-4">
@@ -503,16 +400,6 @@ export default function InvoiceViewPage() {
             >
               Cancel
             </Button>
-            {invoice?.status === 'paid' && (
-              <Button
-                variant="outline"
-                className="flex-1 text-red-600 hover:bg-red-50"
-                disabled={isUpdating}
-                onClick={() => handleClearPayment()}
-              >
-                {isUpdating ? 'Updating...' : 'Clear Payment'}
-              </Button>
-            )}
             <Button
               variant="success"
               className="flex-1"
@@ -520,7 +407,7 @@ export default function InvoiceViewPage() {
               onClick={() => handleMarkPaid(selectedPaymentMethod)}
             >
               <Check size={16} />
-              {invoice?.status === 'paid' ? 'Update' : 'Mark as Paid'}
+              {isUpdating ? 'Updating...' : 'Mark as Paid'}
             </Button>
           </div>
         </div>
