@@ -16,8 +16,8 @@ interface Notification {
 
 interface NotificationListResponse {
   notifications: Notification[];
-  total: number;
-  nextOffset: number | null;
+  nextCursor: string | null;
+  hasMore: boolean;
 }
 
 interface UnreadCount {
@@ -33,15 +33,18 @@ interface OnboardingStatus {
 // ── Queries ─────────────────────────────────────────────────────
 
 export function useNotifications(limit = 25) {
+  // The API is cursor-paginated: it reads `cursor` and returns
+  // { notifications, nextCursor, hasMore }.
   return useInfiniteQuery({
     queryKey: ["notifications"],
-    queryFn: ({ pageParam = 0 }) =>
+    queryFn: ({ pageParam }) =>
       api.get<NotificationListResponse>("/notifications", {
         limit,
-        offset: pageParam,
+        cursor: pageParam || undefined,
       }),
-    initialPageParam: 0,
-    getNextPageParam: (lastPage) => lastPage.nextOffset ?? undefined,
+    initialPageParam: "",
+    getNextPageParam: (lastPage) =>
+      lastPage.hasMore && lastPage.nextCursor ? lastPage.nextCursor : undefined,
   });
 }
 

@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
 import { success, error } from "@/lib/responses";
+import { todayYMD } from "@/lib/business-time";
 
 // ---------------------------------------------------------------------------
 // GET /api/worker/today — Today's jobs for the current worker
@@ -14,8 +15,9 @@ export async function GET(request: NextRequest) {
   const { user } = result;
 
   try {
-    const now = new Date();
-    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    // "Today" in the business timezone — server-local new Date() is UTC on
+    // Vercel and would show tomorrow's jobs from ~7-8pm ET onward.
+    const today = todayYMD();
 
     const jobs = await prisma.job.findMany({
       where: {
@@ -66,6 +68,7 @@ export async function GET(request: NextRequest) {
       status: job.status,
       isBtoB: job.isBtoB,
       notes: job.notes,
+      propertyId: job.propertyId,
       property: job.property
         ? { id: job.property.id, name: job.property.name, address: job.property.address }
         : null,

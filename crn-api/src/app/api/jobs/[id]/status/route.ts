@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { success, error, notFound, validationError } from "@/lib/responses";
+import { todayYMD } from "@/lib/business-time";
 import { z } from "zod";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -72,13 +73,19 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     // Build update data
     const updateData: Record<string, unknown> = { status: newStatus };
 
-    // Set completedDate when transitioning to COMPLETED
+    // Any transition away from SCHEDULED locks the job against calendar
+    // sync: the feed must never move dates/fees of a job that has started,
+    // completed, been invoiced, or been cancelled (monthly invoicing
+    // selects by scheduledDate — a feed-moved COMPLETED job would corrupt
+    // invoices). Contract note: the worker status route
+    // (/api/worker/jobs/[id]/status) sets syncLocked identically.
+    if (newStatus !== "SCHEDULED") {
+      updateData.syncLocked = true;
+    }
+
+    // Set completedDate when transitioning to COMPLETED (business timezone)
     if (newStatus === "COMPLETED") {
-      const today = new Date();
-      const yyyy = today.getFullYear();
-      const mm = String(today.getMonth() + 1).padStart(2, "0");
-      const dd = String(today.getDate()).padStart(2, "0");
-      updateData.completedDate = `${yyyy}-${mm}-${dd}`;
+      updateData.completedDate = todayYMD();
     }
 
     // Clear completedDate if reverting from COMPLETED back (e.g., CANCELLED→SCHEDULED)

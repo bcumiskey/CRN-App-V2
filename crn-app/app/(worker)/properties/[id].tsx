@@ -1,15 +1,41 @@
-import { View, Text, ScrollView, TouchableOpacity, Linking, StyleSheet } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { View, Text, ScrollView, TouchableOpacity, Linking, StyleSheet, ActivityIndicator } from "react-native";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useWorkerProperty } from "../../../hooks/use-worker";
 import { Card } from "../../../components/ui/Card";
+import { Button } from "../../../components/ui/Button";
 
 export default function WorkerPropertyDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const propertyQuery = useWorkerProperty(id);
   const property = propertyQuery.data;
 
+  if (propertyQuery.isError) {
+    return (
+      <View style={styles.loading}>
+        <Text style={styles.errorTitle}>Couldn't load this property</Text>
+        <Text style={styles.errorMessage}>
+          Check your connection and try again.
+        </Text>
+        <View style={styles.errorActions}>
+          <Button variant="primary" size="md" onPress={() => propertyQuery.refetch()} loading={propertyQuery.isRefetching}>
+            Retry
+          </Button>
+          <Button variant="ghost" size="md" onPress={() => router.back()}>
+            Go Back
+          </Button>
+        </View>
+      </View>
+    );
+  }
+
   if (!property) {
-    return <View style={styles.loading}><Text>Loading...</Text></View>;
+    return (
+      <View style={styles.loading}>
+        <ActivityIndicator size="large" color="#2563eb" />
+        <Text style={styles.loadingText}>Loading...</Text>
+      </View>
+    );
   }
 
   return (
@@ -92,7 +118,11 @@ export default function WorkerPropertyDetailScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f9fafb" },
   content: { padding: 16, paddingBottom: 40 },
-  loading: { flex: 1, justifyContent: "center", alignItems: "center" },
+  loading: { flex: 1, justifyContent: "center", alignItems: "center", padding: 24 },
+  loadingText: { marginTop: 12, fontSize: 14, color: "#6b7280" },
+  errorTitle: { fontSize: 18, fontWeight: "600", color: "#111827", marginBottom: 8, textAlign: "center" },
+  errorMessage: { fontSize: 14, color: "#6b7280", textAlign: "center", marginBottom: 20 },
+  errorActions: { gap: 10, alignSelf: "stretch" },
   name: { fontSize: 24, fontWeight: "700", color: "#111827" },
   address: { fontSize: 15, color: "#2563eb", textDecorationLine: "underline", marginBottom: 16 },
   section: { marginBottom: 12 },

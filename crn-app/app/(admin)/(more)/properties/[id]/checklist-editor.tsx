@@ -53,7 +53,7 @@ export default function ChecklistEditorScreen() {
   useEffect(() => {
     if (checklist) {
       setName(checklist.name);
-      setJobTypeScope(checklist.jobTypeScope);
+      setJobTypeScope(checklist.jobTypeScope ?? null);
       setIsActive(checklist.isActive);
       setItems(
         checklist.items.map((item) => ({

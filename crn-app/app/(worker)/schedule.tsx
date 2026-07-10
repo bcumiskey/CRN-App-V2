@@ -7,7 +7,11 @@ import { StatusBadge } from "../../components/ui/StatusBadge";
 import { EmptyState } from "../../components/ui/EmptyState";
 
 function formatDate(date: Date): string {
-  return date.toISOString().split("T")[0];
+  // Local calendar date — toISOString() is the UTC date and shifts the week
+  // window and day grouping a day forward every evening for US timezones.
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate()
+  ).padStart(2, "0")}`;
 }
 function addDays(date: Date, days: number): Date {
   const r = new Date(date); r.setDate(r.getDate() + days); return r;

@@ -37,6 +37,7 @@ export async function POST(request: NextRequest) {
       successful: results.filter((r) => r.result.status === "success").length,
       partial: results.filter((r) => r.result.status === "partial").length,
       failed: results.filter((r) => r.result.status === "error").length,
+      skipped: results.filter((r) => r.result.status === "skipped").length,
       totalEventsCreated: results.reduce(
         (sum, r) => sum + r.result.eventsCreated,
         0
