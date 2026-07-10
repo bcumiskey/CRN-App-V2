@@ -28,6 +28,13 @@
       "expo-asset",
       "expo-head",
       "expo-secure-store"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "6ae73a5d-c5bd-4d79-8d40-e9a35177c34a"
+      }
+    },
+    "owner": "bcadmin2026"
   }
 }
