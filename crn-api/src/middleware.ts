@@ -7,6 +7,8 @@ const ALLOWED_ORIGINS = [
   "http://localhost:19006",
   "https://crn-web.vercel.app",
   "https://crn-api.vercel.app",
+  "https://crnapp.com",
+  "https://www.crnapp.com",
 ];
 
 export function middleware(request: NextRequest) {
