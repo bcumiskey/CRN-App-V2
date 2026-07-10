@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   FileText, Plus, Clock, CheckCircle, Send, Eye, AlertTriangle, Ban,
-  ChevronDown, ChevronRight, CheckSquare,
+  ChevronDown, ChevronRight, ChevronLeft, CheckSquare,
 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card, CardContent } from '@/components/ui/Card'
@@ -15,6 +15,7 @@ import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import v1Fetch from '@/lib/v1-compat'
+import { api } from '@/lib/api'
 
 function toast(msg: string, type: 'success' | 'error' = 'success') {
   const div = document.createElement('div')
@@ -27,14 +28,26 @@ function todayLocalYMD() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+// Raw V2 list shape (fetched via api client so we keep total/limit/offset —
+// v1Fetch unwraps the envelope to a bare array and drops the total)
 interface Invoice {
   id: string
   invoiceNumber: string
-  property: { name: string; ownerName: string }
+  owner?: { id: string; name: string } | null
+  property?: { id: string; name: string } | null
   invoiceDate: string
   total: number
   status: string
 }
+
+interface InvoiceListResponse {
+  invoices: Invoice[]
+  total: number
+  limit: number
+  offset: number
+}
+
+const PAGE_SIZE = 50
 
 interface OwnerBalance {
   ownerId: string
@@ -76,6 +89,10 @@ export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [loading, setLoading] = useState(true)
 
+  // Pagination
+  const [offset, setOffset] = useState(0)
+  const [total, setTotal] = useState(0)
+
   // Outstanding-by-owner section
   const [balances, setBalances] = useState<OwnerBalance[]>([])
   const [balancesError, setBalancesError] = useState(false)
@@ -89,24 +106,32 @@ export default function InvoicesPage() {
   const [isMarkingPaid, setIsMarkingPaid] = useState(false)
 
   useEffect(() => {
-    fetchInvoices()
+    fetchInvoices(0)
     fetchBalances()
   }, [])
 
-  const fetchInvoices = async () => {
+  const fetchInvoices = async (pageOffset: number) => {
+    setLoading(true)
     try {
-      const response = await v1Fetch('/api/invoices?limit=200')
-      if (response.ok) {
-        setInvoices(await response.json())
-      } else {
-        toast('Failed to load invoices', 'error')
-      }
+      const data = await api.get<InvoiceListResponse>('/invoices', {
+        limit: PAGE_SIZE,
+        offset: pageOffset,
+      })
+      setInvoices(data.invoices)
+      setTotal(data.total)
     } catch (error) {
       console.error('Failed to fetch invoices:', error)
       toast('Failed to load invoices', 'error')
     } finally {
       setLoading(false)
     }
+  }
+
+  const goToOffset = (pageOffset: number) => {
+    // Selection is per-page — clear it so hidden rows can't be bulk-acted on
+    setSelected(new Set())
+    setOffset(pageOffset)
+    fetchInvoices(pageOffset)
   }
 
   const fetchBalances = async () => {
@@ -230,7 +255,7 @@ export default function InvoicesPage() {
 
       setShowMarkPaidModal(false)
       // Paid invoices change both the table and the owner balances
-      await Promise.all([fetchInvoices(), fetchBalances()])
+      await Promise.all([fetchInvoices(offset), fetchBalances()])
     } catch (error) {
       console.error('Bulk mark-paid failed:', error)
       toast('Failed to mark invoices as paid', 'error')
@@ -339,7 +364,7 @@ export default function InvoicesPage() {
 
         <div className="flex justify-between items-center mb-6">
           <h3 className="text-lg font-semibold text-gray-900">
-            {invoices.length} Invoice{invoices.length !== 1 && 's'}
+            {total} Invoice{total !== 1 && 's'}
           </h3>
           <Button onClick={() => router.push('/invoices/new')}>
             <Plus size={16} />
@@ -367,7 +392,7 @@ export default function InvoicesPage() {
 
         {loading ? (
           <div className="text-center py-12 text-gray-500">Loading...</div>
-        ) : invoices.length === 0 ? (
+        ) : total === 0 ? (
           <Card>
             <CardContent>
               <EmptyState
@@ -439,7 +464,7 @@ export default function InvoicesPage() {
                           <span className="text-gray-500 italic font-normal">All properties</span>
                         )}
                       </td>
-                      <td className="px-6 py-4 text-gray-600">{invoice.property?.ownerName || '-'}</td>
+                      <td className="px-6 py-4 text-gray-600">{invoice.owner?.name || '-'}</td>
                       <td className="px-6 py-4 text-gray-600">{formatDate(invoice.invoiceDate)}</td>
                       <td className="px-6 py-4 text-right font-semibold">
                         {formatCurrency(invoice.total)}
@@ -449,6 +474,35 @@ export default function InvoicesPage() {
                   ))}
                 </tbody>
               </table>
+
+              {/* Pagination */}
+              {total > PAGE_SIZE && (
+                <div className="flex items-center justify-between px-6 py-3 border-t border-gray-100">
+                  <span className="text-sm text-gray-600">
+                    {offset + 1}&ndash;{Math.min(offset + PAGE_SIZE, total)} of {total}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={offset === 0 || loading}
+                      onClick={() => goToOffset(Math.max(0, offset - PAGE_SIZE))}
+                    >
+                      <ChevronLeft size={14} />
+                      Prev
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={offset + PAGE_SIZE >= total || loading}
+                      onClick={() => goToOffset(offset + PAGE_SIZE)}
+                    >
+                      Next
+                      <ChevronRight size={14} />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}

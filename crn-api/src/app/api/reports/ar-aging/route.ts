@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
 import { success, error } from "@/lib/responses";
 import { r2 } from "@/lib/report-utils";
+import { bankersRound } from "crn-shared";
 import { todayYMD, diffDaysYMD, dueDateFromTerms } from "@/lib/business-time";
 
 // ---------------------------------------------------------------------------
@@ -20,6 +21,7 @@ export async function GET(request: NextRequest) {
       include: {
         owner: { select: { id: true, name: true } },
         property: { select: { id: true, name: true } },
+        payments: { select: { amount: true } },
       },
     });
 
@@ -34,6 +36,7 @@ export async function GET(request: NextRequest) {
       ownerName: string;
       propertyName: string | null;
       total: number;
+      balance: number;
       dueDate: string | null;
       invoiceDate: string;
       daysOverdue: number;
@@ -55,12 +58,22 @@ export async function GET(request: NextRequest) {
         inv.dueDate ?? dueDateFromTerms(inv.invoiceDate, inv.paymentTerms);
       const daysOverdue = diffDaysYMD(effectiveDueDate, todayStr);
 
+      // What's still owed: total minus partial payments (clamped at 0 so an
+      // overpayment can't produce a negative receivable)
+      const balance = Math.max(
+        0,
+        bankersRound(
+          inv.total - inv.payments.reduce((sum, p) => sum + p.amount, 0)
+        )
+      );
+
       const detail: InvoiceDetail = {
         invoiceId: inv.id,
         invoiceNumber: inv.invoiceNumber,
         ownerName: inv.owner.name,
         propertyName: inv.property?.name ?? null,
         total: r2(inv.total),
+        balance,
         dueDate: effectiveDueDate,
         invoiceDate: inv.invoiceDate,
         daysOverdue: Math.max(0, daysOverdue),
@@ -77,7 +90,7 @@ export async function GET(request: NextRequest) {
         bucket = "60_plus";
       }
 
-      buckets[bucket].total += inv.total;
+      buckets[bucket].total += balance;
       buckets[bucket].invoices.push(detail);
     }
 

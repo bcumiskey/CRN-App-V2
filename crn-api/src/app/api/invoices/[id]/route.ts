@@ -30,12 +30,29 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
           },
           orderBy: { sortOrder: "asc" },
         },
+        payments: { orderBy: { date: "asc" } },
       },
     });
 
     if (!invoice) return notFound("Invoice not found");
 
-    return success(invoice);
+    // Computed payment fields. Legacy guard: a paid invoice from before
+    // payment tracking has zero payments but is settled history — never let
+    // the missing rows make it look owed.
+    const amountPaid = bankersRound(
+      invoice.payments.reduce((sum, p) => sum + p.amount, 0)
+    );
+    const isLegacyPaid =
+      invoice.status === "paid" && invoice.payments.length === 0;
+    const balance = isLegacyPaid
+      ? 0
+      : bankersRound(invoice.total - amountPaid);
+
+    return success({
+      ...invoice,
+      amountPaid: isLegacyPaid ? bankersRound(invoice.total) : amountPaid,
+      balance,
+    });
   } catch (err) {
     console.error("[GET /api/invoices/[id]]", err);
     return error("Failed to fetch invoice", 500);

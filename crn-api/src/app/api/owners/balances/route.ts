@@ -8,8 +8,9 @@ import { bankersRound } from "crn-shared";
 // GET /api/owners/balances — Outstanding balance per owner
 //
 // For each owner:
-//   - unpaidInvoiceTotal: Σ Invoice.total where status in (sent, viewed,
-//     overdue). Drafts aren't owed yet; paid/void don't count.
+//   - unpaidInvoiceTotal: Σ Invoice balance (total − payments) where status
+//     in (sent, viewed, overdue). Drafts aren't owed yet; paid/void don't
+//     count. Partial payments reduce what's owed.
 //   - unbilledJobTotal: Σ (job.totalFee + Σ charges.amount) over COMPLETED
 //     jobs on the owner's properties that aren't on any non-void invoice.
 //   - draftInvoiceTotal: Σ Invoice.total where status = draft, so the UI can
@@ -48,6 +49,7 @@ export async function GET(request: NextRequest) {
           total: true,
           status: true,
           invoiceDate: true,
+          payments: { select: { amount: true } },
         },
       }),
       prisma.job.findMany({
@@ -101,7 +103,13 @@ export async function GET(request: NextRequest) {
         continue;
       }
 
-      entry.unpaidInvoiceTotal += inv.total;
+      // What's still owed on this invoice: total minus partial payments
+      // (clamped at 0 so an overpayment can't offset other invoices)
+      const balance = Math.max(
+        0,
+        inv.total - inv.payments.reduce((sum, p) => sum + p.amount, 0)
+      );
+      entry.unpaidInvoiceTotal += balance;
       entry.unpaidInvoiceCount += 1;
       // String YYYY-MM-DD dates compare lexicographically
       if (

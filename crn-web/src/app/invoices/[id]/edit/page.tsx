@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   Save,
   Printer,
+  Download,
   CheckCircle,
   Send,
   Plus,
@@ -24,6 +25,8 @@ import { Modal } from '@/components/ui/Modal'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { PRESET_BILLING_ITEMS } from '@/lib/billing-items'
 import v1Fetch from '@/lib/v1-compat'
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://crn-api.vercel.app'
 
 function toast(msg: string, type: 'success' | 'error' = 'success') {
   const div = document.createElement('div')
@@ -93,6 +96,10 @@ export default function InvoiceEditPage() {
   const [loading, setLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [isSending, setIsSending] = useState(false)
+
+  // Whether email delivery is configured on the API — unknown until a send
+  // response tells us (there is no config-probe endpoint on purpose)
+  const [emailConfigured, setEmailConfigured] = useState<boolean | null>(null)
 
   // Editable fields
   const [invoiceDate, setInvoiceDate] = useState('')
@@ -333,13 +340,13 @@ export default function InvoiceEditPage() {
     }
   }
 
-  const handleMarkSent = async () => {
+  const handleSend = async () => {
     if (!invoice) return
 
     // Save first — only proceed if the save actually persisted
     const saved = await handleSave()
     if (!saved) {
-      toast('Invoice was not marked as sent because saving failed', 'error')
+      toast('Invoice was not sent because saving failed', 'error')
       return
     }
 
@@ -347,14 +354,32 @@ export default function InvoiceEditPage() {
     try {
       const res = await v1Fetch(`/api/invoices/${invoice.id}/send`, { method: 'POST' })
       if (res.ok) {
-        setInvoice(prev => (prev ? { ...prev, status: 'sent' } : prev))
-        toast('Invoice marked as sent — no email goes out, so deliver it to the owner yourself (Print / Save as PDF)')
+        const data = await res.json()
+        setInvoice(prev => (prev ? { ...prev, status: data.invoice?.status || 'sent' } : prev))
+        const reason: string | undefined = data.emailSkippedReason
+
+        if (data.emailSent) {
+          setEmailConfigured(true)
+          toast(`Invoice emailed to ${invoice.property?.ownerName || 'the owner'} and marked as sent`)
+        } else if (reason === 'not_configured') {
+          setEmailConfigured(false)
+          toast('Invoice marked as sent — no email goes out, so deliver it to the owner yourself (Print / Save as PDF)')
+        } else if (reason === 'no_owner_email') {
+          setEmailConfigured(true)
+          toast('Invoice marked as sent, but the owner has no email address — add an email to the owner to send invoices automatically', 'error')
+        } else if (reason && reason.startsWith('send_failed')) {
+          setEmailConfigured(true)
+          const detail = reason.replace(/^send_failed:\s*/, '')
+          toast(`Invoice was marked as sent, but emailing it failed: ${detail} — deliver it to the owner yourself`, 'error')
+        } else {
+          toast('Invoice marked as sent')
+        }
       } else {
         const error = await res.json()
-        toast(error.error || 'Failed to mark invoice as sent', 'error')
+        toast(error.error || 'Failed to send invoice', 'error')
       }
     } catch (error) {
-      toast('Failed to mark invoice as sent', 'error')
+      toast('Failed to send invoice', 'error')
     } finally {
       setIsSending(false)
     }
@@ -383,6 +408,10 @@ export default function InvoiceEditPage() {
 
   const handlePrint = () => {
     window.print()
+  }
+
+  const handleDownloadPdf = () => {
+    window.open(`${API_BASE}/api/invoices/${id}/pdf`, '_blank', 'noopener')
   }
 
   if (loading) {
@@ -613,14 +642,17 @@ export default function InvoiceEditPage() {
                   <div>
                     <Button
                       className="w-full"
-                      onClick={handleMarkSent}
+                      onClick={handleSend}
                       disabled={isSending || isSaving}
                     >
-                      <Send size={16} /> {isSending ? 'Updating...' : 'Mark as Sent'}
+                      <Send size={16} /> {isSending ? 'Sending...' : 'Send / Mark as Sent'}
                     </Button>
                     <p className="text-xs text-gray-500 mt-1">
-                      Saves your changes, then marks the invoice as sent. No email goes out —
-                      deliver it to the owner yourself (Print / Save as PDF).
+                      {emailConfigured === true
+                        ? 'Saves your changes, then emails the invoice PDF to the owner and marks it as sent.'
+                        : emailConfigured === false
+                          ? 'Saves your changes, then marks the invoice as sent. Email delivery is not configured — deliver it to the owner yourself (Download PDF).'
+                          : 'Saves your changes, then sends the invoice. If email delivery is configured the owner is emailed the PDF; otherwise it is just marked as sent.'}
                     </p>
                   </div>
                 )}
@@ -629,6 +661,9 @@ export default function InvoiceEditPage() {
                     <CheckCircle size={16} /> Mark as Paid
                   </Button>
                 )}
+                <Button variant="outline" className="w-full" onClick={handleDownloadPdf}>
+                  <Download size={16} /> Download PDF
+                </Button>
                 <Button variant="outline" className="w-full" onClick={handlePrint}>
                   <Printer size={16} /> Print / Save as PDF
                 </Button>

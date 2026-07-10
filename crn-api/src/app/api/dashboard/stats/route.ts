@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
       unpaidTeamJobs,
       draftInvoices,
       outstandingInvoices,
-      outstandingResult,
+      unpaidInvoices,
     ] = await Promise.all([
       // Jobs this month
       prisma.job.count({
@@ -93,12 +93,28 @@ export async function GET(request: NextRequest) {
         where: { status: { in: ["sent", "viewed", "overdue"] } },
       }),
 
-      // Outstanding amount
-      prisma.invoice.aggregate({
+      // Outstanding amounts (total + partial payments, to compute balances)
+      prisma.invoice.findMany({
         where: { status: { in: ["sent", "viewed", "overdue"] } },
-        _sum: { total: true },
+        select: {
+          total: true,
+          payments: { select: { amount: true } },
+        },
       }),
     ]);
+
+    // Outstanding amount: what's still OWED on open invoices — each
+    // invoice's total minus its partial payments (clamped at 0 so an
+    // overpayment can't offset other invoices)
+    const outstandingBalance = unpaidInvoices.reduce(
+      (sum, inv) =>
+        sum +
+        Math.max(
+          0,
+          inv.total - inv.payments.reduce((s, p) => s + p.amount, 0)
+        ),
+      0
+    );
 
     // Pending from clients: uninvoiced completed job value (fee + extra
     // charges) PLUS open invoice totals — sending an invoice moves the job
@@ -108,9 +124,7 @@ export async function GET(request: NextRequest) {
         sum + j.totalFee + j.charges.reduce((s, c) => s + c.amount, 0),
       0
     );
-    const pendingFromClients = r2(
-      uninvoicedValue + (outstandingResult._sum.total ?? 0)
-    );
+    const pendingFromClients = r2(uninvoicedValue + outstandingBalance);
 
     // Owed to team: the workers' share of each unpaid job (worker pool +
     // owner payouts — exactly what pay statements freeze at period close),
@@ -150,7 +164,7 @@ export async function GET(request: NextRequest) {
       jobsCompleted,
       revenueThisMonth: revenueResult._sum.totalFee ?? 0,
       outstandingInvoices,
-      outstandingAmount: outstandingResult._sum.total ?? 0,
+      outstandingAmount: r2(outstandingBalance),
     });
   } catch (err) {
     console.error("[GET /api/dashboard/stats]", err);

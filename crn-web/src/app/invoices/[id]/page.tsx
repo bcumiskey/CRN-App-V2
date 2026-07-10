@@ -2,14 +2,18 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter, useParams } from 'next/navigation'
-import { ArrowLeft, Printer, Send, CheckCircle, Pencil, Trash2, Check } from 'lucide-react'
+import { ArrowLeft, Printer, Send, CheckCircle, Pencil, Trash2, Check, Download, Plus, DollarSign } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { Card, CardContent } from '@/components/ui/Card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
+import Badge from '@/components/ui/Badge'
+import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import InvoiceTemplate from '@/components/documents/InvoiceTemplate'
 import { cn, formatCurrency, formatDate } from '@/lib/utils'
 import v1Fetch from '@/lib/v1-compat'
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://crn-api.vercel.app'
 
 function toast(msg: string, type: 'success' | 'error' = 'success') {
   const div = document.createElement('div')
@@ -28,6 +32,31 @@ const PAYMENT_METHODS = [
   { value: 'cash', label: 'Cash' },
   { value: 'other', label: 'Other' },
 ]
+
+// Full method list for recording individual payments (matches the API's
+// check|venmo|zelle|ach|cash|other set)
+const RECORD_PAYMENT_METHODS = [
+  { value: '', label: 'Not specified' },
+  { value: 'check', label: 'Check' },
+  { value: 'venmo', label: 'Venmo' },
+  { value: 'zelle', label: 'Zelle' },
+  { value: 'ach', label: 'ACH / Bank transfer' },
+  { value: 'cash', label: 'Cash' },
+  { value: 'other', label: 'Other' },
+]
+
+function methodLabel(method?: string | null): string {
+  if (!method) return '—'
+  return RECORD_PAYMENT_METHODS.find(m => m.value === method)?.label || method
+}
+
+interface Payment {
+  id: string
+  amount: number
+  date: string
+  method?: string | null
+  notes?: string | null
+}
 
 interface LineItem {
   id: string
@@ -52,6 +81,9 @@ interface Invoice {
   paidDate?: string | null
   notes?: string | null
   lineItems: LineItem[]
+  payments?: Payment[]
+  amountPaid?: number
+  balance?: number
   property: {
     id: string
     name: string
@@ -85,6 +117,19 @@ export default function InvoiceViewPage() {
   const [isDeleting, setIsDeleting] = useState(false)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('')
+
+  // Whether email delivery is configured on the API — unknown until a send
+  // response tells us (there is no config-probe endpoint on purpose)
+  const [emailConfigured, setEmailConfigured] = useState<boolean | null>(null)
+
+  // Record Payment modal
+  const [showRecordPaymentModal, setShowRecordPaymentModal] = useState(false)
+  const [payAmount, setPayAmount] = useState('')
+  const [payDate, setPayDate] = useState(todayLocalYMD())
+  const [payMethod, setPayMethod] = useState('')
+  const [payNotes, setPayNotes] = useState('')
+  const [isRecordingPayment, setIsRecordingPayment] = useState(false)
+  const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null)
 
   useEffect(() => {
     if (id) {
@@ -120,7 +165,11 @@ export default function InvoiceViewPage() {
     window.print()
   }, [])
 
-  const handleMarkSent = async () => {
+  const handleDownloadPdf = useCallback(() => {
+    window.open(`${API_BASE}/api/invoices/${id}/pdf`, '_blank', 'noopener')
+  }, [id])
+
+  const handleSend = async () => {
     if (!invoice) return
     setIsUpdating(true)
 
@@ -130,14 +179,32 @@ export default function InvoiceViewPage() {
       })
 
       if (res.ok) {
-        setInvoice({ ...invoice, status: 'sent' })
-        toast('Invoice marked as sent — no email goes out, so deliver it to the owner yourself (Print / Save as PDF)')
+        const data = await res.json()
+        setInvoice({ ...invoice, status: data.invoice?.status || 'sent' })
+        const reason: string | undefined = data.emailSkippedReason
+
+        if (data.emailSent) {
+          setEmailConfigured(true)
+          toast(`Invoice emailed to ${invoice.property?.ownerName || 'the owner'} and marked as sent`)
+        } else if (reason === 'not_configured') {
+          setEmailConfigured(false)
+          toast('Invoice marked as sent — no email goes out, so deliver it to the owner yourself (Print / Save as PDF)')
+        } else if (reason === 'no_owner_email') {
+          setEmailConfigured(true)
+          toast('Invoice marked as sent, but the owner has no email address — add an email to the owner to send invoices automatically', 'error')
+        } else if (reason && reason.startsWith('send_failed')) {
+          setEmailConfigured(true)
+          const detail = reason.replace(/^send_failed:\s*/, '')
+          toast(`Invoice was marked as sent, but emailing it failed: ${detail} — deliver it to the owner yourself`, 'error')
+        } else {
+          toast('Invoice marked as sent')
+        }
       } else {
         const error = await res.json()
-        toast(error.error || 'Failed to mark invoice as sent', 'error')
+        toast(error.error || 'Failed to send invoice', 'error')
       }
     } catch (error) {
-      toast('Failed to mark invoice as sent', 'error')
+      toast('Failed to send invoice', 'error')
     } finally {
       setIsUpdating(false)
     }
@@ -156,10 +223,11 @@ export default function InvoiceViewPage() {
       })
 
       if (res.ok) {
-        setInvoice({ ...invoice, status: 'paid', paymentMethod, paidDate })
         toast(`Invoice marked as paid via ${PAYMENT_METHODS.find(p => p.value === paymentMethod)?.label}`)
         setShowPaymentModal(false)
         setSelectedPaymentMethod('')
+        // Refetch — mark-paid also records the remaining balance as a payment
+        await loadData()
       } else {
         const error = await res.json()
         toast(error.error || 'Failed to mark invoice as paid', 'error')
@@ -168,6 +236,93 @@ export default function InvoiceViewPage() {
       toast('Failed to mark invoice as paid', 'error')
     } finally {
       setIsUpdating(false)
+    }
+  }
+
+  const openRecordPaymentModal = () => {
+    if (!invoice) return
+    const balance = invoice.balance ?? invoice.total
+    setPayAmount(balance > 0 ? balance.toFixed(2) : '')
+    setPayDate(todayLocalYMD())
+    setPayMethod('')
+    setPayNotes('')
+    setShowRecordPaymentModal(true)
+  }
+
+  const handleRecordPayment = async () => {
+    if (!invoice) return
+    const amount = parseFloat(payAmount)
+    if (!amount || amount <= 0) {
+      toast('Enter a payment amount greater than zero', 'error')
+      return
+    }
+    if (!payDate) {
+      toast('Please choose a payment date', 'error')
+      return
+    }
+
+    setIsRecordingPayment(true)
+    try {
+      const res = await v1Fetch(`/api/invoices/${invoice.id}/payments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount,
+          date: payDate,
+          ...(payMethod ? { method: payMethod } : {}),
+          ...(payNotes.trim() ? { notes: payNotes.trim() } : {}),
+        }),
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        if (data.warning) {
+          // Overpayment — the payment WAS recorded, but flag it loudly
+          toast(`Payment recorded — ${data.warning}`, 'error')
+        } else if (data.invoiceStatus === 'paid' && invoice.status !== 'paid') {
+          toast('Payment recorded — invoice is now fully paid')
+        } else {
+          toast(`Payment recorded — ${formatCurrency(Math.max(data.balance ?? 0, 0))} remaining`)
+        }
+        setShowRecordPaymentModal(false)
+        await loadData()
+      } else {
+        const error = await res.json()
+        toast(error.error || 'Failed to record payment', 'error')
+      }
+    } catch (error) {
+      toast('Failed to record payment', 'error')
+    } finally {
+      setIsRecordingPayment(false)
+    }
+  }
+
+  const handleDeletePayment = async (payment: Payment) => {
+    if (!invoice) return
+    if (!confirm(`Remove the ${formatCurrency(payment.amount)} payment from ${formatDate(payment.date)}? This cannot be undone.`)) return
+
+    setDeletingPaymentId(payment.id)
+    try {
+      const res = await v1Fetch(`/api/invoices/${invoice.id}/payments/${payment.id}`, {
+        method: 'DELETE',
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        if (invoice.status === 'paid' && data.invoiceStatus === 'sent') {
+          toast('Payment removed — invoice is owed again and reverted to sent')
+        } else {
+          toast('Payment removed')
+        }
+        await loadData()
+      } else {
+        const error = await res.json()
+        toast(error.error || 'Failed to remove payment', 'error')
+      }
+    } catch (error) {
+      toast('Failed to remove payment', 'error')
+    } finally {
+      setDeletingPaymentId(null)
     }
   }
 
@@ -230,6 +385,11 @@ export default function InvoiceViewPage() {
     )
   }
 
+  const amountPaid = invoice.amountPaid ?? 0
+  const balance = invoice.balance ?? invoice.total
+  const payments = invoice.payments ?? []
+  const isPartiallyPaid = amountPaid > 0 && amountPaid < invoice.total && invoice.status !== 'paid'
+
   return (
     <>
       <div className="min-h-screen bg-gray-100 print:bg-white print:min-h-0">
@@ -256,16 +416,23 @@ export default function InvoiceViewPage() {
                   </Button>
                 )}
 
-                {/* Mark as Sent - drafts only. No email goes out — Alex delivers the invoice herself. */}
+                {/* Send - drafts only. Emails the invoice PDF to the owner when
+                    email delivery is configured; otherwise just marks it sent. */}
                 {invoice.status === 'draft' && (
                   <Button
                     variant="primary"
-                    onClick={handleMarkSent}
+                    onClick={handleSend}
                     disabled={isUpdating}
-                    title="Marks the invoice as sent. No email is sent — deliver it to the owner yourself (Print / Save as PDF)."
+                    title={
+                      emailConfigured === true
+                        ? 'Emails the invoice PDF to the owner and marks it as sent.'
+                        : emailConfigured === false
+                          ? 'Email delivery is not configured — this only marks the invoice as sent. Deliver it yourself (Download PDF).'
+                          : 'Marks the invoice as sent. If email delivery is configured, the owner is emailed the invoice PDF.'
+                    }
                   >
                     <Send size={16} />
-                    {isUpdating ? 'Updating...' : 'Mark as Sent'}
+                    {isUpdating ? 'Sending...' : 'Send / Mark as Sent'}
                   </Button>
                 )}
 
@@ -280,6 +447,14 @@ export default function InvoiceViewPage() {
                   </Button>
                 )}
 
+                {/* Partially paid indicator */}
+                {isPartiallyPaid && (
+                  <Badge variant="warning" className="px-3 py-1.5 text-sm rounded-lg">
+                    <DollarSign size={14} className="mr-1" />
+                    Partially paid
+                  </Badge>
+                )}
+
                 {/* Paid indicator */}
                 {invoice.status === 'paid' && (
                   <span className="px-3 py-1.5 bg-green-100 text-green-800 rounded-lg text-sm font-medium inline-flex items-center">
@@ -288,6 +463,12 @@ export default function InvoiceViewPage() {
                     {invoice.paymentMethod ? ` via ${PAYMENT_METHODS.find(p => p.value === invoice.paymentMethod)?.label || invoice.paymentMethod}` : ''}
                   </span>
                 )}
+
+                {/* Download PDF — server-generated PDF, same file that gets emailed */}
+                <Button variant="outline" onClick={handleDownloadPdf}>
+                  <Download size={16} />
+                  Download PDF
+                </Button>
 
                 {/* Print / Save as PDF — uses the browser print dialog */}
                 <Button variant="outline" onClick={handlePrint}>
@@ -309,6 +490,76 @@ export default function InvoiceViewPage() {
                 )}
               </div>
             </div>
+
+            {/* Payments */}
+            {invoice.status !== 'void' && (
+              <Card className="mb-6">
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <DollarSign size={18} className="text-green-600" />
+                    Payments
+                  </CardTitle>
+                  <Button size="sm" onClick={openRecordPaymentModal} disabled={balance <= 0 && invoice.status === 'paid'}>
+                    <Plus size={14} />
+                    Record Payment
+                  </Button>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {/* Amount-paid / balance summary — mirrors the invoice total below */}
+                  <div className="px-6 py-3 border-b border-gray-100 text-sm text-gray-700">
+                    Paid <span className="font-semibold">{formatCurrency(amountPaid)}</span> of{' '}
+                    <span className="font-semibold">{formatCurrency(invoice.total)}</span> —{' '}
+                    <span className={cn('font-semibold', balance > 0 ? 'text-amber-700' : 'text-green-700')}>
+                      {formatCurrency(Math.max(balance, 0))} remaining
+                    </span>
+                    {balance < 0 && (
+                      <span className="ml-2 text-red-600 font-medium">
+                        (overpaid by {formatCurrency(Math.abs(balance))})
+                      </span>
+                    )}
+                  </div>
+
+                  {payments.length === 0 ? (
+                    <p className="px-6 py-4 text-sm text-gray-400">No payments recorded yet.</p>
+                  ) : (
+                    <table className="w-full">
+                      <thead className="bg-gray-50 border-b">
+                        <tr>
+                          <th className="text-left px-6 py-2 text-xs font-medium text-gray-500 uppercase">Date</th>
+                          <th className="text-right px-6 py-2 text-xs font-medium text-gray-500 uppercase">Amount</th>
+                          <th className="text-left px-6 py-2 text-xs font-medium text-gray-500 uppercase">Method</th>
+                          <th className="text-left px-6 py-2 text-xs font-medium text-gray-500 uppercase">Notes</th>
+                          <th className="w-12 px-4 py-2"></th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {payments.map((p) => (
+                          <tr key={p.id} className="hover:bg-gray-50">
+                            <td className="px-6 py-3 text-sm text-gray-700">{formatDate(p.date)}</td>
+                            <td className="px-6 py-3 text-sm font-semibold text-gray-900 text-right">
+                              {formatCurrency(p.amount)}
+                            </td>
+                            <td className="px-6 py-3 text-sm text-gray-600">{methodLabel(p.method)}</td>
+                            <td className="px-6 py-3 text-sm text-gray-600">{p.notes || '—'}</td>
+                            <td className="px-4 py-3 text-center">
+                              <button
+                                onClick={() => handleDeletePayment(p)}
+                                disabled={deletingPaymentId === p.id}
+                                className="text-gray-400 hover:text-red-600 disabled:opacity-50"
+                                aria-label={`Remove payment of ${formatCurrency(p.amount)}`}
+                                title="Remove payment"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </CardContent>
+              </Card>
+            )}
           </div>
         </div>
 
@@ -363,8 +614,13 @@ export default function InvoiceViewPage() {
           <div className="text-center pb-4 border-b">
             <p className="font-medium text-gray-900">{invoice?.invoiceNumber}</p>
             <p className="text-lg font-semibold text-green-600 mt-1">
-              {invoice && formatCurrency(invoice.total)}
+              {formatCurrency(Math.max(balance, 0))}
             </p>
+            {isPartiallyPaid && (
+              <p className="text-xs text-gray-500 mt-1">
+                {formatCurrency(amountPaid)} of {formatCurrency(invoice.total)} already paid
+              </p>
+            )}
           </div>
 
           <div>
@@ -408,6 +664,85 @@ export default function InvoiceViewPage() {
             >
               <Check size={16} />
               {isUpdating ? 'Updating...' : 'Mark as Paid'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Record Payment Modal */}
+      <Modal
+        open={showRecordPaymentModal}
+        onClose={() => { if (!isRecordingPayment) setShowRecordPaymentModal(false) }}
+        title="Record Payment"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <div className="text-center pb-4 border-b">
+            <p className="font-medium text-gray-900">{invoice.invoiceNumber}</p>
+            <p className="text-sm text-gray-500 mt-1">
+              {formatCurrency(Math.max(balance, 0))} remaining of {formatCurrency(invoice.total)}
+            </p>
+          </div>
+
+          <Input
+            label="Amount ($)"
+            type="number"
+            step="0.01"
+            min="0"
+            value={payAmount}
+            onChange={(e) => setPayAmount(e.target.value)}
+            placeholder="0.00"
+          />
+          <Input
+            label="Payment Date"
+            type="date"
+            value={payDate}
+            onChange={(e) => setPayDate(e.target.value)}
+          />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Payment Method (optional)
+            </label>
+            <select
+              value={payMethod}
+              onChange={(e) => setPayMethod(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {RECORD_PAYMENT_METHODS.map(m => (
+                <option key={m.value} value={m.value}>{m.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Notes (optional)
+            </label>
+            <textarea
+              value={payNotes}
+              onChange={(e) => setPayNotes(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              rows={2}
+              placeholder="e.g. Check #1042"
+            />
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => setShowRecordPaymentModal(false)}
+              disabled={isRecordingPayment}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="success"
+              className="flex-1"
+              onClick={handleRecordPayment}
+              disabled={isRecordingPayment}
+              loading={isRecordingPayment}
+            >
+              Record Payment
             </Button>
           </div>
         </div>

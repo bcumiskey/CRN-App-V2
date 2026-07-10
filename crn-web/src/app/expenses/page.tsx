@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { Receipt, Plus, Paperclip } from "lucide-react";
+import { Receipt, Plus, Paperclip, ChevronLeft, ChevronRight } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -37,6 +37,8 @@ interface ExpenseSummary {
 }
 
 type RangePreset = "this_month" | "last_month" | "this_year";
+
+const PAGE_SIZE = 50;
 
 const RANGE_OPTIONS: { value: RangePreset; label: string }[] = [
   { value: "this_month", label: "This Month" },
@@ -85,6 +87,7 @@ export default function ExpensesPage() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [rangePreset, setRangePreset] = useState<RangePreset>("this_month");
+  const [offset, setOffset] = useState(0);
 
   // Form state
   const [formDate, setFormDate] = useState(() => todayLocalYMD());
@@ -95,11 +98,16 @@ export default function ExpensesPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const fetchData = (preset: RangePreset) => {
+  const fetchData = (preset: RangePreset, pageOffset: number) => {
     setLoading(true);
     const { startDate, endDate } = rangeForPreset(preset);
     Promise.all([
-      api.get<{ expenses: Expense[]; total: number }>("/expenses", { startDate, endDate, limit: 200 }),
+      api.get<{ expenses: Expense[]; total: number }>("/expenses", {
+        startDate,
+        endDate,
+        limit: PAGE_SIZE,
+        offset: pageOffset,
+      }),
       api.get<ExpenseSummary>("/expenses/summary", { startDate, endDate }),
     ])
       .then(([expData, sumData]) => {
@@ -112,8 +120,15 @@ export default function ExpensesPage() {
   };
 
   useEffect(() => {
-    fetchData(rangePreset);
+    // Changing the range resets to the first page
+    setOffset(0);
+    fetchData(rangePreset, 0);
   }, [rangePreset]);
+
+  const goToOffset = (pageOffset: number) => {
+    setOffset(pageOffset);
+    fetchData(rangePreset, pageOffset);
+  };
 
   useEffect(() => {
     api
@@ -142,7 +157,9 @@ export default function ExpensesPage() {
       setFormVendor("");
       setFormDescription("");
       setFormAmount("");
-      fetchData(rangePreset);
+      // Back to the first page — expenses sort date-desc, so the new entry is up top
+      setOffset(0);
+      fetchData(rangePreset, 0);
     } catch (err) {
       console.error(err);
       setFormError("Failed to save expense. Please check the fields and try again.");
@@ -237,6 +254,35 @@ export default function ExpensesPage() {
               ))}
             </tbody>
           </table>
+        )}
+
+        {/* Pagination */}
+        {!loading && expenseCount > PAGE_SIZE && (
+          <div className="flex items-center justify-between px-6 py-3 border-t border-gray-100">
+            <span className="text-sm text-gray-600">
+              {offset + 1}&ndash;{Math.min(offset + PAGE_SIZE, expenseCount)} of {expenseCount}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={offset === 0}
+                onClick={() => goToOffset(Math.max(0, offset - PAGE_SIZE))}
+              >
+                <ChevronLeft size={14} />
+                Prev
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={offset + PAGE_SIZE >= expenseCount}
+                onClick={() => goToOffset(offset + PAGE_SIZE)}
+              >
+                Next
+                <ChevronRight size={14} />
+              </Button>
+            </div>
+          </div>
         )}
       </Card>
 
