@@ -1,0 +1,9 @@
+# Normalize all text files to LF in the repository; working copies follow platform.
+* text=auto
+
+# Binary assets — never touch line endings
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff binary
+*.woff2 binary
