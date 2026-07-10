@@ -19,6 +19,7 @@ import {
   UserCircle,
   StickyNote,
   DollarSign,
+  HardHat,
 } from "lucide-react";
 
 const navItems = [
@@ -34,8 +35,11 @@ const navItems = [
   { href: "/reports", label: "Reports", icon: TrendingUp },
 ];
 
+// Bottom-pinned utility links — Team Portal sits directly above Settings,
+// matching V1's AdminSidebar placement (HardHat icon, border-t block).
 const secondaryItems = [
   { href: "/calendar-sync", label: "Calendar Sync", icon: RefreshCw },
+  { href: "/team-portal", label: "Team Portal", icon: HardHat },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -64,28 +68,11 @@ export function Sidebar() {
       <nav className="flex-1 px-3 py-2 space-y-0.5 overflow-y-auto">
         {navItems.map((item) => {
           const Icon = item.icon;
-          const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                isActive
-                  ? "bg-blue-600 text-white"
-                  : "text-gray-400 hover:text-white hover:bg-gray-800"
-              }`}
-            >
-              <Icon size={18} />
-              {item.label}
-            </Link>
-          );
-        })}
-
-        <div className="border-t border-gray-800 my-3" />
-
-        {secondaryItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = pathname.startsWith(item.href);
+          // Exact or segment-prefix match, so /team-portal doesn't light up /team
+          const isActive =
+            item.href === "/"
+              ? pathname === "/"
+              : pathname === item.href || pathname.startsWith(`${item.href}/`);
           return (
             <Link
               key={item.href}
@@ -102,6 +89,28 @@ export function Sidebar() {
           );
         })}
       </nav>
+
+      {/* Bottom-pinned: Calendar Sync, Team Portal, Settings (V1 pattern) */}
+      <div className="px-3 py-2 space-y-0.5 border-t border-gray-800">
+        {secondaryItems.map((item) => {
+          const Icon = item.icon;
+          const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                isActive
+                  ? "bg-blue-600 text-white"
+                  : "text-gray-400 hover:text-white hover:bg-gray-800"
+              }`}
+            >
+              <Icon size={18} />
+              {item.label}
+            </Link>
+          );
+        })}
+      </div>
 
       {/* User */}
       <div className="px-4 py-4 border-t border-gray-800">

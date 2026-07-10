@@ -1,12 +1,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Building, Calendar, Save, FileText, ExternalLink } from 'lucide-react'
+import { Building, Calendar, Save, FileText, ExternalLink, Lock } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card, CardContent, CardHeader } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import v1Fetch from '@/lib/v1-compat'
+import { clearApiSecret } from '@/lib/auth-secret'
 
 function toast(msg: string, type: 'success' | 'error' = 'success') {
   const div = document.createElement('div')
@@ -229,6 +230,33 @@ export default function SettingsPage() {
             <Button variant="outline" onClick={() => (window.location.href = '/properties')}>
               <ExternalLink size={16} />
               Manage Properties
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Security */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Lock size={20} className="text-gray-400" />
+              <h3 className="font-semibold text-gray-900">Security</h3>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <p className="text-gray-600 mb-4">
+              Lock this device to clear the stored app passphrase. You&apos;ll be asked
+              for it again the next time this browser talks to the API (only applies
+              once the passphrase is enforced).
+            </p>
+            <Button
+              variant="outline"
+              onClick={() => {
+                clearApiSecret()
+                window.location.reload()
+              }}
+            >
+              <Lock size={16} />
+              Lock this device
             </Button>
           </CardContent>
         </Card>

@@ -26,7 +26,8 @@
       "expo-router",
       "expo-font",
       "expo-asset",
-      "expo-head"
+      "expo-head",
+      "expo-secure-store"
     ]
   }
 }

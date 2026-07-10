@@ -1,3 +1,5 @@
+import { apiSecretHeaders, notifyUnauthorized } from "./auth-secret";
+
 const VERCEL_TEAM_SLUG = "bcumiskeys-projects";
 
 /**
@@ -39,7 +41,7 @@ interface FetchOptions extends Omit<RequestInit, "body"> {
   params?: Record<string, string | number | boolean | undefined>;
 }
 
-class ApiError extends Error {
+export class ApiError extends Error {
   constructor(public status: number, public data: unknown) {
     super(`API error: ${status}`);
   }
@@ -61,6 +63,7 @@ async function request<T>(path: string, options: FetchOptions = {}): Promise<T> 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...apiAuthHeaders(),
+    ...apiSecretHeaders(),
     ...((fetchOptions.headers as Record<string, string>) ?? {}),
   };
 
@@ -71,6 +74,10 @@ async function request<T>(path: string, options: FetchOptions = {}): Promise<T> 
   });
 
   if (!res.ok) {
+    // API_SHARED_SECRET is enforced and this device has no (valid) secret —
+    // surface the unlock gate. When the API has no secret configured this
+    // never fires (requests succeed as before).
+    if (res.status === 401) notifyUnauthorized();
     const data = await res.json().catch(() => null);
     throw new ApiError(res.status, data);
   }

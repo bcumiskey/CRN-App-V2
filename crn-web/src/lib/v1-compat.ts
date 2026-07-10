@@ -13,6 +13,21 @@
  */
 
 import { API_BASE, apiAuthHeaders } from "./api";
+import { apiSecretHeaders, notifyUnauthorized } from "./auth-secret";
+
+/**
+ * Common headers for every compat request: Vercel preview-protection bypass
+ * (apiAuthHeaders, preview-only) plus the runtime shared-secret bearer
+ * (apiSecretHeaders, empty until a secret is stored on this device).
+ */
+function compatHeaders(extra?: HeadersInit): Record<string, string> {
+  return {
+    "Content-Type": "application/json",
+    ...apiAuthHeaders(),
+    ...apiSecretHeaders(),
+    ...((extra as Record<string, string>) ?? {}),
+  };
+}
 
 // ── Field mapping: V2 → V1 ─────────────────────────────────────
 
@@ -235,10 +250,20 @@ function generateColor(name: string): string {
 async function handleDashboardFetch(): Promise<Response> {
   try {
     const [statsRes, todayRes, upcomingRes] = await Promise.allSettled([
-      fetch(`${API_BASE}/api/dashboard/stats`, { headers: { "Content-Type": "application/json", ...apiAuthHeaders() } }),
-      fetch(`${API_BASE}/api/dashboard/today`, { headers: { "Content-Type": "application/json", ...apiAuthHeaders() } }),
-      fetch(`${API_BASE}/api/jobs?status=SCHEDULED&limit=10`, { headers: { "Content-Type": "application/json", ...apiAuthHeaders() } }),
+      fetch(`${API_BASE}/api/dashboard/stats`, { headers: compatHeaders() }),
+      fetch(`${API_BASE}/api/dashboard/today`, { headers: compatHeaders() }),
+      fetch(`${API_BASE}/api/jobs?status=SCHEDULED&limit=10`, { headers: compatHeaders() }),
     ]);
+
+    // The dashboard swallows failures (renders zeros) — but a 401 means the
+    // shared secret is enforced and missing/wrong, so raise the unlock gate
+    // instead of silently showing an empty dashboard.
+    for (const r of [statsRes, todayRes, upcomingRes]) {
+      if (r.status === "fulfilled" && r.value.status === 401) {
+        notifyUnauthorized();
+        break;
+      }
+    }
 
     const stats = statsRes.status === "fulfilled" && statsRes.value.ok
       ? await statsRes.value.json()
@@ -328,16 +353,14 @@ export async function v1Fetch(
   const response = await fetch(fullUrl, {
     ...options,
     body,
-    headers: {
-      "Content-Type": "application/json",
-      ...apiAuthHeaders(),
-      ...options?.headers,
-    },
+    headers: compatHeaders(options?.headers),
   });
 
   // For non-OK responses: return empty data for known-missing endpoints
   // to prevent page crashes, pass through errors for actual API calls
   if (!response.ok) {
+    // Shared secret enforced and missing/wrong on this device — show the gate
+    if (response.status === 401) notifyUnauthorized();
     if (response.status === 404) {
       // These endpoints may not exist in V2 — return safe empty responses
       if (pathPart.includes("/alerts")) {
