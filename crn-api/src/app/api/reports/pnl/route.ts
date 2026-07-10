@@ -79,7 +79,27 @@ export async function GET(request: NextRequest) {
       .map((c) => ({ ...c, total: r2(c.total) }))
       .sort((a, b) => b.total - a.total);
 
-    const netProfit = r2(fin.totalNetRevenue - totalExpenses);
+    // Labor cost: what the team earns on the jobs in range (worker pool +
+    // owner payouts — the same amounts pay statements freeze at close), so
+    // netProfit matches the tax package's view instead of ignoring payroll.
+    let laborCost = 0;
+    for (const worker of fin.perWorkerTotals.values()) {
+      laborCost += worker.totalPay;
+    }
+    laborCost = r2(laborCost);
+
+    // Mileage deduction in range
+    const mileageLogs = await prisma.mileageLog.findMany({
+      where: { date: { gte: range.startDate, lte: range.endDate } },
+      select: { deductionAmount: true },
+    });
+    const mileageDeduction = r2(
+      mileageLogs.reduce((sum, m) => sum + m.deductionAmount, 0)
+    );
+
+    const netProfit = r2(
+      fin.totalNetRevenue - totalExpenses - laborCost - mileageDeduction
+    );
 
     return success({
       ...range,
@@ -96,6 +116,8 @@ export async function GET(request: NextRequest) {
         total: totalExpenses,
         byCategory: expensesByCategory,
       },
+      laborCost,
+      mileageDeduction,
       netProfit,
     });
   } catch (err) {

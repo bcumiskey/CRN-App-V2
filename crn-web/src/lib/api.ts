@@ -1,4 +1,38 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://crn-api.vercel.app";
+const VERCEL_TEAM_SLUG = "bcumiskeys-projects";
+
+/**
+ * Resolve the API base URL:
+ * 1. Explicit NEXT_PUBLIC_API_URL always wins.
+ * 2. On Vercel preview deployments, derive the crn-api preview alias for the
+ *    same git branch, so review branches talk to their matching API preview
+ *    instead of production (requires "expose system env vars" in Vercel).
+ * 3. Production default.
+ */
+function resolveApiBase(): string {
+  if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
+  const branch = process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_REF;
+  if (process.env.NEXT_PUBLIC_VERCEL_ENV === "preview" && branch) {
+    const slug = branch.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    return `https://crn-api-git-${slug}-${VERCEL_TEAM_SLUG}.vercel.app`;
+  }
+  return "https://crn-api.vercel.app";
+}
+
+export const API_BASE = resolveApiBase();
+
+/**
+ * When the crn-api preview sits behind Vercel Deployment Protection, requests
+ * carry the "Protection Bypass for Automation" secret. Preview-scoped env var
+ * only — unset in production, so this is a no-op there.
+ */
+export function apiAuthHeaders(): Record<string, string> {
+  const bypass = process.env.NEXT_PUBLIC_VERCEL_BYPASS;
+  if (!bypass) return {};
+  return {
+    "x-vercel-protection-bypass": bypass,
+    "x-vercel-set-bypass-cookie": "true",
+  };
+}
 
 interface FetchOptions extends Omit<RequestInit, "body"> {
   body?: unknown;
@@ -26,6 +60,7 @@ async function request<T>(path: string, options: FetchOptions = {}): Promise<T> 
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    ...apiAuthHeaders(),
     ...((fetchOptions.headers as Record<string, string>) ?? {}),
   };
 

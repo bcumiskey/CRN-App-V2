@@ -18,7 +18,8 @@ export async function GET(request: NextRequest) {
   try {
     const where: Record<string, unknown> = {
       status: "COMPLETED",
-      invoiceLineItems: { none: {} },
+      // Jobs whose only line items sit on voided invoices are billable again
+      invoiceLineItems: { none: { invoice: { status: { not: "void" } } } },
     };
 
     if (propertyId) {
@@ -36,6 +37,7 @@ export async function GET(request: NextRequest) {
         jobNumber: true,
         scheduledDate: true,
         totalFee: true,
+        charges: { select: { id: true, amount: true, reason: true } },
         property: { select: { id: true, name: true } },
       },
       orderBy: { scheduledDate: "desc" },

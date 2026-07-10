@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
 import { success, error } from "@/lib/responses";
+import { todayYMD } from "@/lib/business-time";
 
 // ---------------------------------------------------------------------------
 // GET /api/dashboard/today — Today's jobs for admin view
@@ -11,7 +12,7 @@ export async function GET(request: NextRequest) {
   const result = await requireAdmin(request);
   if (result.error) return result.error;
 
-  const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+  const today = todayYMD(); // YYYY-MM-DD in the business timezone
 
   try {
     const jobs = await prisma.job.findMany({

@@ -8,6 +8,7 @@ import {
   loadFinancialModel,
   r2,
 } from "@/lib/report-utils";
+import { todayParts } from "@/lib/business-time";
 
 // ---------------------------------------------------------------------------
 // POST /api/exports/tax-package — Annual Tax Package
@@ -21,8 +22,7 @@ export async function POST(request: NextRequest) {
     const body = (await request.json()) as {
       taxYear?: number;
     };
-    const now = new Date();
-    const taxYear = body.taxYear ?? now.getFullYear();
+    const taxYear = body.taxYear ?? todayParts().year;
     const startDate = `${taxYear}-01-01`;
     const endDate = `${taxYear}-12-31`;
 
@@ -113,28 +113,6 @@ export async function POST(request: NextRequest) {
       mileageLogs.reduce((sum, m) => sum + m.deductionAmount, 0)
     );
 
-    // --- 1099 Summary ---
-    const allWorkerIds = Array.from(fin.perWorkerTotals.keys());
-    const users = await prisma.user.findMany({
-      where: { id: { in: allWorkerIds } },
-      select: { id: true, taxIdOnFile: true, mailingAddress: true },
-    });
-    const userMap = new Map(users.map((u) => [u.id, u]));
-
-    const workers1099 = Array.from(fin.perWorkerTotals.entries()).map(
-      ([userId, data]) => {
-        const user = userMap.get(userId);
-        return {
-          userId,
-          name: data.name,
-          totalPaid: r2(data.totalPay),
-          requires1099: data.totalPay >= threshold,
-          w9OnFile: user?.taxIdOnFile ?? false,
-        };
-      }
-    );
-    workers1099.sort((a, b) => b.totalPaid - a.totalPaid);
-
     // --- Revenue by Property ---
     const propertyMap = new Map<
       string,
@@ -170,7 +148,18 @@ export async function POST(request: NextRequest) {
         endDate: { gte: startDate, lte: endDate },
       },
       include: {
-        payStatements: { select: { grossPay: true } },
+        payStatements: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                taxIdOnFile: true,
+                mailingAddress: true,
+              },
+            },
+          },
+        },
       },
     });
 
@@ -181,6 +170,55 @@ export async function POST(request: NextRequest) {
         0
       )
     );
+
+    // Accrual labor cost for the P&L summary: what the team earns on the
+    // year's jobs (worker pool + owner payouts), matching /reports/pnl.
+    let laborCost = 0;
+    for (const worker of fin.perWorkerTotals.values()) {
+      laborCost += worker.totalPay;
+    }
+    laborCost = r2(laborCost);
+
+    // --- 1099 Summary ---
+    // 1099-NEC reports amounts ACTUALLY PAID: frozen pay statements from the
+    // year's pay periods that were marked paid — matching /reports/1099-summary.
+    const workerMap = new Map<
+      string,
+      {
+        name: string;
+        totalPaid: number;
+        w9OnFile: boolean;
+        hasMailingAddress: boolean;
+      }
+    >();
+    for (const pp of payPeriods) {
+      if (pp.status !== "paid") continue;
+      for (const ps of pp.payStatements) {
+        const existing = workerMap.get(ps.userId);
+        if (existing) {
+          existing.totalPaid += ps.grossPay;
+        } else {
+          workerMap.set(ps.userId, {
+            name: ps.user.name,
+            totalPaid: ps.grossPay,
+            w9OnFile: ps.user.taxIdOnFile ?? false,
+            hasMailingAddress: !!ps.user.mailingAddress,
+          });
+        }
+      }
+    }
+
+    const workers1099 = Array.from(workerMap.entries()).map(
+      ([userId, data]) => ({
+        userId,
+        name: data.name,
+        totalPaid: r2(data.totalPaid),
+        requires1099: data.totalPaid >= threshold,
+        w9OnFile: data.w9OnFile,
+        hasMailingAddress: data.hasMailingAddress,
+      })
+    );
+    workers1099.sort((a, b) => b.totalPaid - a.totalPaid);
 
     return success({
       taxYear,
@@ -193,10 +231,11 @@ export async function POST(request: NextRequest) {
         houseCut: fin.totalHouseCut,
         netRevenue: fin.totalNetRevenue,
         totalExpenses,
-        totalLabor,
+        // Accrual labor for the year's jobs — matches /reports/pnl laborCost
+        totalLabor: laborCost,
         totalMileageDeduction,
         netProfit: r2(
-          fin.totalNetRevenue - totalExpenses - totalLabor - totalMileageDeduction
+          fin.totalNetRevenue - totalExpenses - laborCost - totalMileageDeduction
         ),
       },
 

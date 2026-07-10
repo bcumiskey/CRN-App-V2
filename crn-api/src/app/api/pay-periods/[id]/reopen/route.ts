@@ -27,9 +27,18 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       return error("Pay period is already open", 409);
     }
 
-    // Delete pay statements and reopen in a transaction
+    // Delete pay statements, release the claimed jobs, and reopen in a
+    // transaction. Close marks each counted job teamPaid=true with
+    // teamPaidDate set to this period's endDate (endDates are unique across
+    // periods), so that marker identifies exactly the jobs this close
+    // claimed — releasing them lets a re-close (or a later period) count
+    // them again without ever double-counting.
     await prisma.$transaction(async (tx) => {
       await tx.payStatement.deleteMany({ where: { payPeriodId: id } });
+      await tx.job.updateMany({
+        where: { teamPaid: true, teamPaidDate: period.endDate },
+        data: { teamPaid: false, teamPaidDate: null },
+      });
       await tx.payPeriod.update({
         where: { id },
         data: {

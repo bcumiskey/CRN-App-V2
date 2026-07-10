@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/auth";
 import { success, error } from "@/lib/responses";
 import { calculateJob } from "crn-shared";
 import type { FinancialModel } from "crn-shared";
+import { todayParts } from "@/lib/business-time";
 
 // ---------------------------------------------------------------------------
 // GET /api/dashboard/financials — Financial dashboard data
@@ -14,10 +15,8 @@ export async function GET(request: NextRequest) {
   if (result.error) return result.error;
 
   try {
-    // Current month boundaries
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth() + 1;
+    // Current month boundaries (business timezone)
+    const { year, month } = todayParts();
     const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
     const lastDay = new Date(year, month, 0).getDate();
     const endDate = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
@@ -54,9 +53,9 @@ export async function GET(request: NextRequest) {
     });
     const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
 
-    // Outstanding invoices (sent but not paid)
+    // Outstanding invoices (sent, viewed, or overdue — open receivables)
     const outstandingInvoices = await prisma.invoice.findMany({
-      where: { status: { in: ["sent", "overdue"] } },
+      where: { status: { in: ["sent", "viewed", "overdue"] } },
       select: { total: true },
     });
     const outstandingAmount = outstandingInvoices.reduce(

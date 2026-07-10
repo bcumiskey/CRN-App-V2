@@ -100,10 +100,21 @@ function OwnersPageContent() {
       const url = editingOwner ? `/api/owners/${editingOwner.id}` : '/api/owners'
       const method = editingOwner ? 'PATCH' : 'POST'
 
+      // Map form fields to V2 API field names (PropertyOwner columns)
+      const body: Record<string, unknown> = {
+        name: data.name,
+        email: data.email || null,
+        phone: data.phone || null,
+        notes: data.notes || null,
+      }
+      if (data.defaultBillingType) {
+        body.billingType = data.defaultBillingType
+      }
+
       const response = await v1Fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
+        body: JSON.stringify(body),
       })
 
       if (response.ok) {
@@ -332,9 +343,7 @@ function OwnerModal({ open, onClose, onSave, owner }: OwnerModalProps) {
     email: '',
     phone: '',
     notes: '',
-    defaultBaseRate: '',
     defaultBillingType: '',
-    preferredContactMethod: '',
   })
   const [saving, setSaving] = useState(false)
 
@@ -345,9 +354,7 @@ function OwnerModal({ open, onClose, onSave, owner }: OwnerModalProps) {
         email: owner.email || '',
         phone: owner.phone || '',
         notes: owner.notes || '',
-        defaultBaseRate: owner.defaultBaseRate?.toString() || '',
         defaultBillingType: owner.defaultBillingType || '',
-        preferredContactMethod: owner.preferredContactMethod || '',
       })
     } else {
       setFormData({
@@ -355,9 +362,7 @@ function OwnerModal({ open, onClose, onSave, owner }: OwnerModalProps) {
         email: '',
         phone: '',
         notes: '',
-        defaultBaseRate: '',
         defaultBillingType: '',
-        preferredContactMethod: '',
       })
     }
   }, [owner, open])
@@ -405,21 +410,10 @@ function OwnerModal({ open, onClose, onSave, owner }: OwnerModalProps) {
         </div>
 
         <div className="border-t pt-4">
-          <h4 className="font-medium text-gray-900 mb-3">Default Preferences</h4>
-          <p className="text-sm text-gray-500 mb-3">
-            These defaults will be suggested when creating new properties for this owner.
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <Input
-              label="Default Rate"
-              type="number"
-              step="0.01"
-              value={formData.defaultBaseRate}
-              onChange={(e) => setFormData({ ...formData, defaultBaseRate: e.target.value })}
-              placeholder="320.00"
-            />
+          <h4 className="font-medium text-gray-900 mb-3">Billing</h4>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Default Billing</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Billing Type</label>
               <select
                 value={formData.defaultBillingType}
                 onChange={(e) => setFormData({ ...formData, defaultBillingType: e.target.value })}
@@ -427,22 +421,7 @@ function OwnerModal({ open, onClose, onSave, owner }: OwnerModalProps) {
               >
                 <option value="">No default</option>
                 <option value="per_job">Per Job</option>
-                <option value="weekly">Weekly</option>
-                <option value="biweekly">Bi-Weekly</option>
                 <option value="monthly">Monthly</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Preferred Contact</label>
-              <select
-                value={formData.preferredContactMethod}
-                onChange={(e) => setFormData({ ...formData, preferredContactMethod: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="">No preference</option>
-                <option value="email">Email</option>
-                <option value="phone">Phone</option>
-                <option value="text">Text Message</option>
               </select>
             </div>
           </div>

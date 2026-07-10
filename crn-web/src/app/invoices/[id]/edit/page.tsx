@@ -5,7 +5,6 @@ import { useRouter, useParams } from 'next/navigation'
 import {
   ArrowLeft,
   Save,
-  Mail,
   Printer,
   Download,
   CheckCircle,
@@ -26,12 +25,18 @@ import { Modal } from '@/components/ui/Modal'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { PRESET_BILLING_ITEMS } from '@/lib/billing-items'
 import v1Fetch from '@/lib/v1-compat'
-import { format } from 'date-fns'
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://crn-api.vercel.app'
 
 function toast(msg: string, type: 'success' | 'error' = 'success') {
   const div = document.createElement('div')
   div.className = `fixed top-4 right-4 z-50 px-4 py-2 rounded-lg shadow-lg text-white text-sm ${type === 'error' ? 'bg-red-600' : 'bg-green-600'}`
   div.textContent = msg; document.body.appendChild(div); setTimeout(() => div.remove(), 3000)
+}
+
+function todayLocalYMD() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 interface LineItem {
@@ -76,8 +81,9 @@ interface CompanySettings {
 
 interface UnbilledJob {
   id: string
-  date: string
-  rate: number
+  jobNumber: string
+  scheduledDate: string
+  totalFee: number
 }
 
 export default function InvoiceEditPage() {
@@ -90,7 +96,10 @@ export default function InvoiceEditPage() {
   const [loading, setLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [isSending, setIsSending] = useState(false)
-  const [isDownloading, setIsDownloading] = useState(false)
+
+  // Whether email delivery is configured on the API — unknown until a send
+  // response tells us (there is no config-probe endpoint on purpose)
+  const [emailConfigured, setEmailConfigured] = useState<boolean | null>(null)
 
   // Editable fields
   const [invoiceDate, setInvoiceDate] = useState('')
@@ -147,7 +156,7 @@ export default function InvoiceEditPage() {
 
   const fetchUnbilledJobs = async (propertyId: string) => {
     try {
-      const res = await v1Fetch(`/api/invoices/unbilled-jobs?propertyId=${propertyId}`)
+      const res = await v1Fetch(`/api/invoices/uninvoiced-jobs?propertyId=${propertyId}`)
       if (res.ok) {
         const data = await res.json()
         setUnbilledJobs(data.jobs || [])
@@ -205,23 +214,96 @@ export default function InvoiceEditPage() {
   const handleAddUnbilledJob = (job: UnbilledJob) => {
     const newItem: LineItem = {
       id: `new-${Date.now()}`,
-      description: `Turnover Cleaning - ${formatDate(job.date)}`,
-      amount: job.rate,
-      itemType: 'service',
-      date: job.date,
+      description: `Turnover Cleaning - ${formatDate(job.scheduledDate)}`,
+      amount: job.totalFee,
+      itemType: 'cleaning',
+      date: job.scheduledDate,
       jobId: job.id,
     }
     setLineItems([...lineItems, newItem])
     setUnbilledJobs(unbilledJobs.filter(j => j.id !== job.id))
   }
 
-  const handleSave = async () => {
-    if (!invoice) return
+  const handleSave = async (): Promise<boolean> => {
+    if (!invoice) return false
+
+    if (lineItems.some(item => !item.description.trim())) {
+      toast('Every line item needs a description', 'error')
+      return false
+    }
+    if (discount < 0) {
+      toast('Discount cannot be negative', 'error')
+      return false
+    }
+
     setIsSaving(true)
 
     try {
+      const originalItems = invoice.lineItems
+      const currentIds = new Set(lineItems.filter(i => !i.id.startsWith('new-')).map(i => i.id))
+
+      // 1. Remove deleted line items
+      for (const original of originalItems) {
+        if (!currentIds.has(original.id)) {
+          const res = await v1Fetch(`/api/invoices/${invoice.id}/line-items/${original.id}`, {
+            method: 'DELETE',
+          })
+          if (!res.ok) {
+            const err = await res.json()
+            throw new Error(err.error || 'Failed to remove line item')
+          }
+        }
+      }
+
+      // 2. Add new items / update changed items
+      for (let index = 0; index < lineItems.length; index++) {
+        const item = lineItems[index]
+
+        if (item.id.startsWith('new-')) {
+          const res = await v1Fetch(`/api/invoices/${invoice.id}/line-items`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              description: item.description,
+              amount: item.amount,
+              sortOrder: index,
+              ...(item.itemType ? { category: item.itemType } : {}),
+              ...(item.date ? { date: item.date.split('T')[0] } : {}),
+              ...(item.jobId ? { jobId: item.jobId } : {}),
+            }),
+          })
+          if (!res.ok) {
+            const err = await res.json()
+            throw new Error(err.error || 'Failed to add line item')
+          }
+        } else {
+          const original = originalItems.find(o => o.id === item.id)
+          if (!original) continue
+
+          const changes: Record<string, unknown> = {}
+          if (item.description !== original.description) changes.description = item.description
+          if (item.amount !== original.amount) changes.amount = item.amount
+          const itemDate = item.date ? item.date.split('T')[0] : null
+          const originalDate = original.date ? String(original.date).split('T')[0] : null
+          if (itemDate !== originalDate) changes.date = itemDate
+
+          if (Object.keys(changes).length > 0) {
+            const res = await v1Fetch(`/api/invoices/${invoice.id}/line-items/${item.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(changes),
+            })
+            if (!res.ok) {
+              const err = await res.json()
+              throw new Error(err.error || 'Failed to update line item')
+            }
+          }
+        }
+      }
+
+      // 3. Invoice fields last — the discount PATCH recalculates total from the final subtotal
       const res = await v1Fetch(`/api/invoices/${invoice.id}`, {
-        method: 'PUT',
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           invoiceDate,
@@ -229,51 +311,72 @@ export default function InvoiceEditPage() {
           paymentTerms,
           notes: notes || null,
           discount,
-          lineItems: lineItems.map(item => ({
-            id: item.id.startsWith('new-') ? undefined : item.id,
-            description: item.description,
-            amount: item.amount,
-            itemType: item.itemType,
-            date: item.date,
-            jobId: item.jobId,
-          })),
         }),
       })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || 'Failed to save invoice')
+      }
 
-      if (res.ok) {
-        const updated = await res.json()
-        setInvoice(updated)
-        setLineItems(updated.lineItems)
+      // 4. Reload so line-item ids and totals reflect the server
+      const refreshed = await v1Fetch(`/api/invoices/${invoice.id}`)
+      if (refreshed.ok) {
+        const data = await refreshed.json()
+        setInvoice(data)
+        setLineItems(data.lineItems)
+        setDiscount(data.discount)
         toast('Invoice saved')
       } else {
-        toast('Failed to save invoice', 'error')
+        // Changes persisted, but local ids are stale — saving again without a
+        // reload would re-add the new line items as duplicates
+        toast('Invoice saved, but refreshing it failed — reload the page before editing further', 'error')
       }
+      return true
     } catch (error) {
-      toast('Failed to save invoice', 'error')
+      toast(error instanceof Error ? error.message : 'Failed to save invoice', 'error')
+      return false
     } finally {
       setIsSaving(false)
     }
   }
 
-  const handleSendEmail = async () => {
+  const handleSend = async () => {
     if (!invoice) return
-    if (!invoice.property?.ownerEmail) {
-      toast('Property owner has no email address', 'error')
+
+    // Save first — only proceed if the save actually persisted
+    const saved = await handleSave()
+    if (!saved) {
+      toast('Invoice was not sent because saving failed', 'error')
       return
     }
-
-    // Save first
-    await handleSave()
 
     setIsSending(true)
     try {
       const res = await v1Fetch(`/api/invoices/${invoice.id}/send`, { method: 'POST' })
       if (res.ok) {
-        setInvoice({ ...invoice, status: 'sent' })
-        toast(`Invoice sent to ${invoice.property?.ownerEmail}`)
+        const data = await res.json()
+        setInvoice(prev => (prev ? { ...prev, status: data.invoice?.status || 'sent' } : prev))
+        const reason: string | undefined = data.emailSkippedReason
+
+        if (data.emailSent) {
+          setEmailConfigured(true)
+          toast(`Invoice emailed to ${invoice.property?.ownerName || 'the owner'} and marked as sent`)
+        } else if (reason === 'not_configured') {
+          setEmailConfigured(false)
+          toast('Invoice marked as sent — no email goes out, so deliver it to the owner yourself (Print / Save as PDF)')
+        } else if (reason === 'no_owner_email') {
+          setEmailConfigured(true)
+          toast('Invoice marked as sent, but the owner has no email address — add an email to the owner to send invoices automatically', 'error')
+        } else if (reason && reason.startsWith('send_failed')) {
+          setEmailConfigured(true)
+          const detail = reason.replace(/^send_failed:\s*/, '')
+          toast(`Invoice was marked as sent, but emailing it failed: ${detail} — deliver it to the owner yourself`, 'error')
+        } else {
+          toast('Invoice marked as sent')
+        }
       } else {
         const error = await res.json()
-        toast(error.error || 'Failed to send', 'error')
+        toast(error.error || 'Failed to send invoice', 'error')
       }
     } catch (error) {
       toast('Failed to send invoice', 'error')
@@ -285,47 +388,30 @@ export default function InvoiceEditPage() {
   const handleMarkPaid = async () => {
     if (!invoice) return
     try {
-      const res = await v1Fetch(`/api/invoices/${invoice.id}`, {
-        method: 'PUT',
+      const paidDate = todayLocalYMD()
+      const res = await v1Fetch(`/api/invoices/${invoice.id}/mark-paid`, {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'paid' }),
+        body: JSON.stringify({ paidDate }),
       })
       if (res.ok) {
         setInvoice({ ...invoice, status: 'paid' })
         toast('Invoice marked as paid')
+      } else {
+        const error = await res.json()
+        toast(error.error || 'Failed to mark invoice as paid', 'error')
       }
     } catch (error) {
-      toast('Failed to update invoice', 'error')
-    }
-  }
-
-  const handleDownloadPDF = async () => {
-    if (!invoice) return
-    setIsDownloading(true)
-
-    try {
-      const res = await v1Fetch(`/api/invoices/${invoice.id}/pdf`)
-      if (!res.ok) throw new Error('Failed to generate PDF')
-
-      const blob = await res.blob()
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${invoice.invoiceNumber}.pdf`
-      document.body.appendChild(a)
-      a.click()
-      window.URL.revokeObjectURL(url)
-      document.body.removeChild(a)
-      toast('PDF downloaded')
-    } catch (error) {
-      toast('Failed to download PDF', 'error')
-    } finally {
-      setIsDownloading(false)
+      toast('Failed to mark invoice as paid', 'error')
     }
   }
 
   const handlePrint = () => {
     window.print()
+  }
+
+  const handleDownloadPdf = () => {
+    window.open(`${API_BASE}/api/invoices/${id}/pdf`, '_blank', 'noopener')
   }
 
   if (loading) {
@@ -422,7 +508,7 @@ export default function InvoiceEditPage() {
                   <div className="text-right text-sm space-y-1">
                     <div className="flex justify-end items-center gap-2">
                       <span className="text-gray-500">Invoice Date:</span>
-                      <span className="font-medium">{format(new Date(invoiceDate), 'MMM d, yyyy')}</span>
+                      <span className="font-medium">{invoiceDate ? formatDate(invoiceDate) : ''}</span>
                     </div>
                     {billingPeriod && (
                       <div className="flex justify-end items-center gap-2">
@@ -552,35 +638,34 @@ export default function InvoiceEditPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                {invoice.status === 'draft' && invoice.property?.ownerEmail && (
-                  <Button className="w-full" onClick={handleSendEmail} disabled={isSending}>
-                    <Mail size={16} /> {isSending ? 'Sending...' : 'Send Email'}
-                  </Button>
-                )}
-                {invoice.status === 'draft' && !invoice.property?.ownerEmail && (
-                  <Button variant="outline" className="w-full" onClick={() => {
-                    v1Fetch(`/api/invoices/${invoice.id}`, {
-                      method: 'PUT',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ status: 'sent' }),
-                    }).then(() => {
-                      setInvoice({ ...invoice, status: 'sent' })
-                      toast('Invoice marked as sent')
-                    })
-                  }}>
-                    <Send size={16} /> Mark as Sent
-                  </Button>
+                {invoice.status === 'draft' && (
+                  <div>
+                    <Button
+                      className="w-full"
+                      onClick={handleSend}
+                      disabled={isSending || isSaving}
+                    >
+                      <Send size={16} /> {isSending ? 'Sending...' : 'Send / Mark as Sent'}
+                    </Button>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {emailConfigured === true
+                        ? 'Saves your changes, then emails the invoice PDF to the owner and marks it as sent.'
+                        : emailConfigured === false
+                          ? 'Saves your changes, then marks the invoice as sent. Email delivery is not configured — deliver it to the owner yourself (Download PDF).'
+                          : 'Saves your changes, then sends the invoice. If email delivery is configured the owner is emailed the PDF; otherwise it is just marked as sent.'}
+                    </p>
+                  </div>
                 )}
                 {invoice.status === 'sent' && (
                   <Button variant="success" className="w-full" onClick={handleMarkPaid}>
                     <CheckCircle size={16} /> Mark as Paid
                   </Button>
                 )}
-                <Button variant="outline" className="w-full" onClick={handleDownloadPDF} disabled={isDownloading}>
-                  <Download size={16} /> {isDownloading ? 'Generating...' : 'Download PDF'}
+                <Button variant="outline" className="w-full" onClick={handleDownloadPdf}>
+                  <Download size={16} /> Download PDF
                 </Button>
                 <Button variant="outline" className="w-full" onClick={handlePrint}>
-                  <Printer size={16} /> Print
+                  <Printer size={16} /> Print / Save as PDF
                 </Button>
               </CardContent>
             </Card>
@@ -665,8 +750,8 @@ export default function InvoiceEditPage() {
                           className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm"
                         >
                           <div>
-                            <span className="font-medium">{formatDate(job.date)}</span>
-                            <span className="text-gray-500 ml-2">{formatCurrency(job.rate)}</span>
+                            <span className="font-medium">{formatDate(job.scheduledDate)}</span>
+                            <span className="text-gray-500 ml-2">{formatCurrency(job.totalFee)}</span>
                           </div>
                           <button
                             onClick={() => handleAddUnbilledJob(job)}

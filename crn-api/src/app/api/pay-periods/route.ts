@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { success, created, error, validationError } from "@/lib/responses";
+import { addDaysYMD, todayParts } from "@/lib/business-time";
 import { z } from "zod";
 
 // ---------------------------------------------------------------------------
@@ -56,32 +57,28 @@ async function autoDetectDates(): Promise<{ startDate: string; endDate: string }
 
   if (lastPeriod) {
     // Start day after last period ended
-    const lastEnd = new Date(lastPeriod.endDate + "T00:00:00");
-    const start = new Date(lastEnd);
-    start.setDate(start.getDate() + 1);
+    const startDate = addDaysYMD(lastPeriod.endDate, 1);
 
-    const end = new Date(start);
+    let endDate: string;
     if (type === "weekly") {
-      end.setDate(end.getDate() + 6);
+      endDate = addDaysYMD(startDate, 6);
     } else if (type === "biweekly") {
-      end.setDate(end.getDate() + 13);
+      endDate = addDaysYMD(startDate, 13);
     } else {
       // monthly: go to end of start's month
-      end.setMonth(end.getMonth() + 1);
-      end.setDate(0); // last day of start month
+      const [y, m] = startDate.split("-").map((p) => parseInt(p, 10));
+      const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+      endDate = `${y}-${String(m).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
     }
 
-    return {
-      startDate: start.toISOString().split("T")[0],
-      endDate: end.toISOString().split("T")[0],
-    };
+    return { startDate, endDate };
   }
 
-  // No previous period — default to current month
-  const now = new Date();
-  const startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-  const endDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+  // No previous period — default to current month (business timezone)
+  const { year, month } = todayParts();
+  const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const endDate = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
 
   return { startDate, endDate };
 }

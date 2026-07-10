@@ -12,7 +12,7 @@
  * Usage in V1 pages: replace `fetch('/api/...')` with `v1Fetch('/api/...')`
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://crn-api.vercel.app";
+import { API_BASE, apiAuthHeaders } from "./api";
 
 // ── Field mapping: V2 → V1 ─────────────────────────────────────
 
@@ -83,12 +83,43 @@ function mapTeamMemberV2toV1(member: any): any {
 }
 
 function mapInvoiceV2toV1(inv: any): any {
+  // V2 returns owner as a sibling object ({id,name,email,phone}); V1 pages read
+  // owner details off invoice.property (ownerName/ownerEmail/ownerPhone).
+  const owner = inv.owner;
+  const property = inv.property
+    ? {
+        ...inv.property,
+        ownerName: owner?.name ?? inv.property.ownerName ?? "",
+        ownerEmail: owner?.email ?? inv.property.ownerEmail ?? "",
+        ownerPhone: owner?.phone ?? inv.property.ownerPhone ?? "",
+      }
+    : owner
+      ? {
+          // Property-less invoice (e.g. monthly across properties) — still
+          // surface the owner so "Bill To" never renders as N/A.
+          id: "",
+          name: "",
+          address: "",
+          ownerName: owner.name ?? "",
+          ownerEmail: owner.email ?? "",
+          ownerPhone: owner.phone ?? "",
+        }
+      : inv.property;
   return {
     ...inv,
-    property: inv.property ? {
-      ...inv.property,
-      ownerName: inv.owner?.name ?? "",
-    } : null,
+    property,
+    // V2 line items use `category`; V1 pages read `itemType`
+    lineItems: Array.isArray(inv.lineItems)
+      ? inv.lineItems.map((li: any) => ({ ...li, itemType: li.itemType ?? li.category ?? null }))
+      : inv.lineItems,
+  };
+}
+
+function mapSettingsV2toV1(settings: any): any {
+  return {
+    ...settings,
+    // V2 CompanySettings field is `businessName`; V1 pages/templates read `companyName`
+    companyName: settings.companyName ?? settings.businessName ?? "",
   };
 }
 
@@ -154,7 +185,20 @@ function unwrapResponse(path: string, data: any): any {
 }
 
 function mapResponseItems(path: string, data: any): any {
-  if (!Array.isArray(data)) return data;
+  if (!Array.isArray(data)) {
+    // Single-object responses that still need field mapping
+    if (data && typeof data === "object") {
+      // Invoice detail / create / update responses (bare invoice object)
+      if (path.startsWith("/api/invoices") && data.invoiceNumber) {
+        return mapInvoiceV2toV1(data);
+      }
+      // Company settings singleton
+      if (path.startsWith("/api/settings")) {
+        return mapSettingsV2toV1(data);
+      }
+    }
+    return data;
+  }
 
   if (path.startsWith("/api/jobs")) {
     return data.map(mapJobV2toV1);
@@ -191,9 +235,9 @@ function generateColor(name: string): string {
 async function handleDashboardFetch(): Promise<Response> {
   try {
     const [statsRes, todayRes, upcomingRes] = await Promise.allSettled([
-      fetch(`${API_BASE}/api/dashboard/stats`, { headers: { "Content-Type": "application/json" } }),
-      fetch(`${API_BASE}/api/dashboard/today`, { headers: { "Content-Type": "application/json" } }),
-      fetch(`${API_BASE}/api/jobs?status=SCHEDULED&limit=10`, { headers: { "Content-Type": "application/json" } }),
+      fetch(`${API_BASE}/api/dashboard/stats`, { headers: { "Content-Type": "application/json", ...apiAuthHeaders() } }),
+      fetch(`${API_BASE}/api/dashboard/today`, { headers: { "Content-Type": "application/json", ...apiAuthHeaders() } }),
+      fetch(`${API_BASE}/api/jobs?status=SCHEDULED&limit=10`, { headers: { "Content-Type": "application/json", ...apiAuthHeaders() } }),
     ]);
 
     const stats = statsRes.status === "fulfilled" && statsRes.value.ok
@@ -286,6 +330,7 @@ export async function v1Fetch(
     body,
     headers: {
       "Content-Type": "application/json",
+      ...apiAuthHeaders(),
       ...options?.headers,
     },
   });

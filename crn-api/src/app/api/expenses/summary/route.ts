@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
 import { success, error } from "@/lib/responses";
+import { resolveDateRange } from "@/lib/date-ranges";
 
 // ---------------------------------------------------------------------------
 // GET /api/expenses/summary — Period expense summary
@@ -12,12 +13,11 @@ export async function GET(request: NextRequest) {
   if (result.error) return result.error;
 
   const params = request.nextUrl.searchParams;
-  const startDate = params.get("startDate");
-  const endDate = params.get("endDate");
-
-  if (!startDate || !endDate) {
-    return error("startDate and endDate are required");
-  }
+  const { startDate, endDate } = resolveDateRange(
+    params.get("startDate"),
+    params.get("endDate"),
+    params.get("preset")
+  );
 
   try {
     const dateFilter = { gte: startDate, lte: endDate };

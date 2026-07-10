@@ -33,7 +33,12 @@ interface PnlData {
   houseCut: number;
   netRevenue: number;
   buckets: { businessExpense: number; ownerProfit: number; workerPool: number };
-  operatingExpenses: { total: number; byCategory: { name: string; amount: number }[] };
+  operatingExpenses: {
+    total: number;
+    byCategory: { categoryId: string; categoryName: string; total: number }[];
+  };
+  laborCost: number;
+  mileageDeduction: number;
   netProfit: number;
 }
 
@@ -50,7 +55,7 @@ interface PropertyRevenue {
   jobCount: number;
   totalRevenue: number;
   avgPerJob: number;
-  houseCut: number;
+  houseCutTotal: number;
   netToCRN: number;
 }
 
@@ -77,7 +82,7 @@ interface CompletionRate {
 interface JobVolume {
   totalJobs: number;
   avgPerDay: number;
-  busiestDay: string;
+  busiestDay: { date: string; count: number };
   dayOfWeekDistribution: { day: string; count: number }[];
 }
 
@@ -104,6 +109,92 @@ interface ArAging {
   invoices: unknown[];
 }
 
+// ── API response shapes (must match crn-api /api/reports/* routes) ─────
+
+interface RevenueBreakdownItem {
+  month?: string;
+  jobType?: string;
+  ownerId?: string;
+  ownerName?: string;
+  jobs: number;
+  grossRevenue: number;
+}
+
+interface RevenueResponse {
+  breakdown: RevenueBreakdownItem[];
+}
+
+interface PropertyRevenueResponse {
+  propertyCount: number;
+  properties: PropertyRevenue[];
+}
+
+interface WorkerEarningsResponse {
+  workers: {
+    userId: string;
+    name: string;
+    jobsWorked: number;
+    totalShares: number;
+    workerPoolPay: number;
+    ownerPay: number;
+    totalPay: number;
+    avgPerJob: number;
+    above1099Threshold: boolean;
+  }[];
+}
+
+interface CompletionRateResponse {
+  totalScheduled: number;
+  totalCompleted: number;
+  totalCancelled: number;
+  completionRate: number;
+  monthlyTrend: {
+    month: string;
+    scheduled: number;
+    completed: number;
+    cancelled: number;
+    completionRate: number;
+  }[];
+}
+
+interface ArAgingBucket {
+  total: number;
+  invoices: unknown[];
+}
+
+interface ArAgingResponse {
+  asOf: string;
+  totalOutstanding: number;
+  invoiceCount: number;
+  buckets: {
+    current: ArAgingBucket;
+    "1_30": ArAgingBucket;
+    "31_60": ArAgingBucket;
+    "60_plus": ArAgingBucket;
+  };
+}
+
+interface Ten99Response {
+  taxYear: number;
+  threshold: number;
+  workers: {
+    userId: string;
+    name: string;
+    totalPaid: number;
+    requires1099: boolean;
+    w9OnFile: boolean;
+    hasMailingAddress: boolean;
+  }[];
+}
+
+interface ScheduleCResponse {
+  expenseLines: { scheduleCLine: string; categories: string[]; total: number }[];
+  totalExpenses: number;
+  labor: { scheduleCLine: string; total: number };
+  mileage: { scheduleCLine: string; total: number };
+  grandTotal: number;
+}
+
 // ── Constants ──────────────────────────────────────────────────────────
 
 const PRESETS: { value: Preset; label: string }[] = [
@@ -127,6 +218,76 @@ function formatCompact(n: number): string {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
   return formatCurrency(n);
+}
+
+// Map /reports/revenue breakdown rows (keyed month/jobType/ownerName
+// depending on groupBy) to the label/revenue shape the cards render.
+function mapRevenueBreakdown(items: RevenueBreakdownItem[]): RevenueItem[] {
+  return items.map((m) => ({
+    label: m.jobType ?? m.ownerName ?? m.month ?? "Unknown",
+    revenue: m.grossRevenue ?? 0,
+    jobCount: m.jobs ?? 0,
+    avgPerJob: m.jobs ? (m.grossRevenue ?? 0) / m.jobs : 0,
+  }));
+}
+
+// Map /reports/worker-earnings rows (name/above1099Threshold) to the
+// userName/requires1099 fields the tables and sort headers use.
+function mapWorkerEarnings(
+  workers: WorkerEarningsResponse["workers"]
+): WorkerEarning[] {
+  return workers.map((w) => ({
+    userId: w.userId,
+    userName: w.name,
+    jobsWorked: w.jobsWorked,
+    totalShares: w.totalShares,
+    workerPoolPay: w.workerPoolPay,
+    ownerPay: w.ownerPay,
+    totalPay: w.totalPay,
+    avgPerJob: w.avgPerJob,
+    requires1099: w.above1099Threshold,
+  }));
+}
+
+function mapTen99(workers: Ten99Response["workers"]): Ten99Entry[] {
+  return workers.map((w) => ({
+    userId: w.userId,
+    userName: w.name,
+    totalPaid: w.totalPaid,
+    requires1099: w.requires1099,
+    w9OnFile: w.w9OnFile,
+  }));
+}
+
+// Expense rows for the P&L breakdown views: operating expense categories
+// plus the labor and mileage deductions the API folds into netProfit.
+interface ExpenseRow {
+  key: string;
+  label: string;
+  amount: number;
+}
+
+function pnlExpenseRows(pnl: PnlData): ExpenseRow[] {
+  const rows: ExpenseRow[] = pnl.operatingExpenses.byCategory.map((cat) => ({
+    key: cat.categoryId,
+    label: cat.categoryName,
+    amount: cat.total,
+  }));
+  if ((pnl.laborCost ?? 0) > 0) {
+    rows.push({ key: "labor", label: "Team Labor (Payouts)", amount: pnl.laborCost });
+  }
+  if ((pnl.mileageDeduction ?? 0) > 0) {
+    rows.push({ key: "mileage", label: "Mileage Deduction", amount: pnl.mileageDeduction });
+  }
+  return rows;
+}
+
+function pnlTotalDeductions(pnl: PnlData): number {
+  return (
+    (pnl.operatingExpenses?.total ?? 0) +
+    (pnl.laborCost ?? 0) +
+    (pnl.mileageDeduction ?? 0)
+  );
 }
 
 type SortDir = "asc" | "desc";
@@ -267,45 +428,41 @@ export default function ReportsPage() {
       const [pnlRes, monthRes, workersRes, completionRes, volumeRes, arRes] =
         await Promise.all([
           api.get<PnlData>("/reports/pnl", params),
-          api.get<{ items: RevenueItem[] }>("/reports/revenue", { ...params, groupBy: "month" }),
-          api.get<WorkerEarning[]>("/reports/worker-earnings", params),
-          api.get<CompletionRate>("/reports/completion-rate", params),
+          api.get<RevenueResponse>("/reports/revenue", { ...params, groupBy: "month" }),
+          api.get<WorkerEarningsResponse>("/reports/worker-earnings", params),
+          api.get<CompletionRateResponse>("/reports/completion-rate", params),
           api.get<JobVolume>("/reports/job-volume", params),
-          api.get<ArAging>("/reports/ar-aging", params),
+          api.get<ArAgingResponse>("/reports/ar-aging", params),
         ]);
       setPnl(pnlRes);
-      const rawMonths = (monthRes as any).items ?? (monthRes as any).breakdown ?? monthRes ?? [];
-      setRevenueByMonth(rawMonths.map((m: any) => ({
-        label: m.label ?? m.month ?? m.name ?? "Unknown",
-        revenue: m.revenue ?? m.grossRevenue ?? m.totalRevenue ?? 0,
-        jobCount: m.jobCount ?? m.jobs ?? m.count ?? 0,
-        avgPerJob: m.avgPerJob ?? (m.jobs ? (m.grossRevenue ?? 0) / m.jobs : 0),
-      })));
-      // Worker earnings: API returns {workers: [...]} not a plain array
-      setWorkerEarnings(Array.isArray(workersRes) ? workersRes : (workersRes as any)?.workers ?? []);
+      setRevenueByMonth(mapRevenueBreakdown(monthRes.breakdown ?? []));
+      setWorkerEarnings(mapWorkerEarnings(workersRes.workers ?? []));
       // Completion rate: map API field names to what page expects
-      const cr = completionRes as any;
       setCompletionRate({
-        rate: cr.completionRate ?? cr.rate ?? 0,
-        scheduled: cr.totalScheduled ?? cr.scheduled ?? 0,
-        completed: cr.totalCompleted ?? cr.completed ?? 0,
-        cancelled: cr.totalCancelled ?? cr.cancelled ?? 0,
-        trend: (cr.monthlyTrend ?? cr.trend ?? []).map((t: any) => ({
-          ...t,
-          rate: t.completionRate ?? t.rate ?? 0,
+        rate: completionRes.completionRate ?? 0,
+        scheduled: completionRes.totalScheduled ?? 0,
+        completed: completionRes.totalCompleted ?? 0,
+        cancelled: completionRes.totalCancelled ?? 0,
+        trend: (completionRes.monthlyTrend ?? []).map((t) => ({
+          month: t.month,
+          rate: t.completionRate ?? 0,
         })),
-      } as any);
+      });
       setJobVolume(volumeRes);
-      // AR aging: API returns {buckets, totalOutstanding} — map to expected shape
-      const aging = arRes as any;
+      // AR aging: API returns {buckets, totalOutstanding} — flatten buckets
       setArAging({
-        current: aging.buckets?.current?.total ?? aging.buckets?.current ?? aging.current ?? 0,
-        days1to30: aging.buckets?.["1_30"]?.total ?? aging.buckets?.days1to30 ?? aging.days1to30 ?? 0,
-        days31to60: aging.buckets?.["31_60"]?.total ?? aging.buckets?.days31to60 ?? aging.days31to60 ?? 0,
-        days60plus: aging.buckets?.["60_plus"]?.total ?? aging.buckets?.days60plus ?? aging.days60plus ?? 0,
-        totalOutstanding: aging.totalOutstanding ?? 0,
-        invoices: aging.invoices ?? [],
-      } as any);
+        current: arRes.buckets?.current?.total ?? 0,
+        days1to30: arRes.buckets?.["1_30"]?.total ?? 0,
+        days31to60: arRes.buckets?.["31_60"]?.total ?? 0,
+        days60plus: arRes.buckets?.["60_plus"]?.total ?? 0,
+        totalOutstanding: arRes.totalOutstanding ?? 0,
+        invoices: [
+          ...(arRes.buckets?.current?.invoices ?? []),
+          ...(arRes.buckets?.["1_30"]?.invoices ?? []),
+          ...(arRes.buckets?.["31_60"]?.invoices ?? []),
+          ...(arRes.buckets?.["60_plus"]?.invoices ?? []),
+        ],
+      });
     } catch (err) {
       console.error("Failed to fetch overview:", err);
       setError("Failed to load overview data. Please try again.");
@@ -318,19 +475,13 @@ export default function ReportsPage() {
     setLoadingRevenue(true);
     try {
       const [propRes, typeRes, ownerRes] = await Promise.all([
-        api.get<PropertyRevenue[]>("/reports/property-revenue", params),
-        api.get<{ items: RevenueItem[] }>("/reports/revenue", { ...params, groupBy: "type" }),
-        api.get<{ items: RevenueItem[] }>("/reports/revenue", { ...params, groupBy: "owner" }),
+        api.get<PropertyRevenueResponse>("/reports/property-revenue", params),
+        api.get<RevenueResponse>("/reports/revenue", { ...params, groupBy: "type" }),
+        api.get<RevenueResponse>("/reports/revenue", { ...params, groupBy: "owner" }),
       ]);
-      setRevenueByProperty(Array.isArray(propRes) ? propRes : (propRes as any)?.properties ?? []);
-      const mapRevItems = (arr: any[]) => arr.map((m: any) => ({
-        label: m.label ?? m.type ?? m.owner ?? m.name ?? m.month ?? "Unknown",
-        revenue: m.revenue ?? m.grossRevenue ?? m.totalRevenue ?? 0,
-        jobCount: m.jobCount ?? m.jobs ?? m.count ?? 0,
-        avgPerJob: m.avgPerJob ?? 0,
-      }));
-      setRevenueByType(mapRevItems((typeRes as any).items ?? (typeRes as any).breakdown ?? typeRes ?? []));
-      setRevenueByOwner(mapRevItems((ownerRes as any).items ?? (ownerRes as any).breakdown ?? ownerRes ?? []));
+      setRevenueByProperty(propRes.properties ?? []);
+      setRevenueByType(mapRevenueBreakdown(typeRes.breakdown ?? []));
+      setRevenueByOwner(mapRevenueBreakdown(ownerRes.breakdown ?? []));
     } catch (err) {
       console.error("Failed to fetch revenue:", err);
     } finally {
@@ -342,11 +493,11 @@ export default function ReportsPage() {
     setLoadingTeam(true);
     try {
       const [workersRes, ten99Res] = await Promise.all([
-        api.get<WorkerEarning[]>("/reports/worker-earnings", params),
-        api.get<Ten99Entry[]>("/reports/1099-summary", params),
+        api.get<WorkerEarningsResponse>("/reports/worker-earnings", params),
+        api.get<Ten99Response>("/reports/1099-summary", params),
       ]);
-      setWorkerEarnings(Array.isArray(workersRes) ? workersRes : (workersRes as any)?.workers ?? []);
-      setTen99Summary(Array.isArray(ten99Res) ? ten99Res : (ten99Res as any)?.workers ?? (ten99Res as any)?.entries ?? []);
+      setWorkerEarnings(mapWorkerEarnings(workersRes.workers ?? []));
+      setTen99Summary(mapTen99(ten99Res.workers ?? []));
     } catch (err) {
       console.error("Failed to fetch team:", err);
     } finally {
@@ -358,12 +509,34 @@ export default function ReportsPage() {
     setLoadingTax(true);
     try {
       const [schedRes, ten99Res, pnlRes] = await Promise.all([
-        api.get<ScheduleCLine[]>("/reports/schedule-c", params),
-        api.get<Ten99Entry[]>("/reports/1099-summary", params),
+        api.get<ScheduleCResponse>("/reports/schedule-c", params),
+        api.get<Ten99Response>("/reports/1099-summary", params),
         api.get<PnlData>("/reports/pnl", params),
       ]);
-      setScheduleCData(Array.isArray(schedRes) ? schedRes : (schedRes as any)?.lines ?? (schedRes as any)?.items ?? []);
-      setTen99Summary(Array.isArray(ten99Res) ? ten99Res : (ten99Res as any)?.workers ?? (ten99Res as any)?.entries ?? []);
+      // Schedule C: flatten {expenseLines, labor, mileage} into table rows
+      const scheduleLines: ScheduleCLine[] = (schedRes.expenseLines ?? []).map(
+        (l) => ({
+          line: l.scheduleCLine,
+          category: l.categories.join(", "),
+          amount: l.total,
+        })
+      );
+      if ((schedRes.labor?.total ?? 0) > 0) {
+        scheduleLines.push({
+          line: schedRes.labor.scheduleCLine,
+          category: "Team payouts (pay statements)",
+          amount: schedRes.labor.total,
+        });
+      }
+      if ((schedRes.mileage?.total ?? 0) > 0) {
+        scheduleLines.push({
+          line: schedRes.mileage.scheduleCLine,
+          category: "Mileage deduction",
+          amount: schedRes.mileage.total,
+        });
+      }
+      setScheduleCData(scheduleLines);
+      setTen99Summary(mapTen99(ten99Res.workers ?? []));
       setPnl(pnlRes);
     } catch (err) {
       console.error("Failed to fetch tax:", err);
@@ -523,6 +696,8 @@ function OverviewTab({
   }
 
   const maxMonthRevenue = Math.max(...revenueByMonth.map((m) => m.revenue), 1);
+  const totalDeductions = pnl ? pnlTotalDeductions(pnl) : 0;
+  const expenseRows = pnl ? pnlExpenseRows(pnl) : [];
 
   return (
     <div className="space-y-6">
@@ -540,7 +715,7 @@ function OverviewTab({
               </p>
               {jobVolume && (
                 <p className="text-sm text-gray-500 mt-1">
-                  {jobVolume?.totalJobs ?? 0} jobs ({formatCurrency(jobVolume.avgPerDay)}/day avg)
+                  {jobVolume?.totalJobs ?? 0} jobs ({(jobVolume?.avgPerDay ?? 0).toFixed(1)}/day avg)
                 </p>
               )}
             </CardContent>
@@ -564,7 +739,7 @@ function OverviewTab({
           <Card
             className={cn(
               "bg-gradient-to-br to-white",
-              pnl?.netProfit ?? 0 >= 0
+              (pnl?.netProfit ?? 0) >= 0
                 ? "from-emerald-50 border-emerald-200"
                 : "from-red-50 border-red-200"
             )}
@@ -573,17 +748,17 @@ function OverviewTab({
               <div
                 className={cn(
                   "flex items-center gap-2 mb-1",
-                  pnl?.netProfit ?? 0 >= 0 ? "text-emerald-600" : "text-red-600"
+                  (pnl?.netProfit ?? 0) >= 0 ? "text-emerald-600" : "text-red-600"
                 )}
               >
-                {pnl?.netProfit ?? 0 >= 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
+                {(pnl?.netProfit ?? 0) >= 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
                 <span className="text-sm font-medium">Net Profit</span>
               </div>
               <p className="text-3xl font-bold text-gray-900">
                 {formatCurrency(pnl?.netProfit ?? 0)}
               </p>
               <p className="text-sm text-gray-500 mt-1">
-                After {formatCurrency(pnl.operatingExpenses.total)} expenses
+                After {formatCurrency(totalDeductions)} expenses
               </p>
             </CardContent>
           </Card>
@@ -617,21 +792,21 @@ function OverviewTab({
               </div>
             </div>
 
-            {/* Expense breakdown */}
-            {pnl?.operatingExpenses?.byCategory.length > 0 && (
+            {/* Expense breakdown (operating categories + labor + mileage) */}
+            {expenseRows.length > 0 && (
               <div className="mt-6 pt-6 border-t border-gray-100">
                 <h4 className="text-sm font-medium text-gray-700 mb-3">
-                  Operating Expenses by Category
+                  Expenses and Deductions
                 </h4>
                 <div className="space-y-2">
-                  {pnl?.operatingExpenses?.byCategory.map((cat) => {
+                  {expenseRows.map((row) => {
                     const pct =
-                      pnl.operatingExpenses.total > 0
-                        ? (cat.amount / pnl.operatingExpenses.total) * 100
+                      totalDeductions > 0
+                        ? (row.amount / totalDeductions) * 100
                         : 0;
                     return (
-                      <div key={cat.name} className="flex items-center gap-3">
-                        <span className="text-sm text-gray-600 w-36 truncate">{cat.name}</span>
+                      <div key={row.key} className="flex items-center gap-3">
+                        <span className="text-sm text-gray-600 w-36 truncate">{row.label}</span>
                         <div className="flex-1 bg-gray-100 rounded-full h-2.5">
                           <div
                             className="bg-blue-500 h-2.5 rounded-full transition-all"
@@ -639,7 +814,7 @@ function OverviewTab({
                           />
                         </div>
                         <span className="text-sm font-medium text-gray-900 w-24 text-right">
-                          {formatCurrency(cat.amount)}
+                          {formatCurrency(row.amount)}
                         </span>
                       </div>
                     );
@@ -782,12 +957,10 @@ function OverviewTab({
                   <p className="text-xs text-gray-500">Avg/Day</p>
                 </div>
               </div>
-              {jobVolume?.busiestDay && (
+              {jobVolume?.busiestDay?.date && (
                 <p className="text-sm text-gray-600 mb-3">
                   Busiest day: <span className="font-medium">
-                    {typeof jobVolume.busiestDay === "object"
-                      ? `${(jobVolume.busiestDay as any).date} (${(jobVolume.busiestDay as any).count} jobs)`
-                      : String(jobVolume.busiestDay)}
+                    {jobVolume.busiestDay.date} ({jobVolume.busiestDay.count} jobs)
                   </span>
                 </p>
               )}
@@ -884,7 +1057,7 @@ function OverviewTab({
                 <tbody className="divide-y divide-gray-50">
                   {workerEarnings.slice(0, 8).map((w) => (
                     <tr key={w.userId} className="hover:bg-gray-50">
-                      <td className="px-4 py-2.5 font-medium text-gray-900">{(w as any).userName ?? (w as any).name}</td>
+                      <td className="px-4 py-2.5 font-medium text-gray-900">{w.userName}</td>
                       <td className="px-4 py-2.5 text-right text-gray-600">{w.jobsWorked}</td>
                       <td className="px-4 py-2.5 text-right font-medium">
                         {formatCurrency(w.totalPay)}
@@ -1012,7 +1185,7 @@ function RevenueTab({
                     />
                     <SortHeader
                       label="House Cut"
-                      field={"houseCut" as keyof PropertyRevenue}
+                      field={"houseCutTotal" as keyof PropertyRevenue}
                       sortKey={propSort.sortKey}
                       sortDir={propSort.sortDir}
                       onToggle={propSort.toggle}
@@ -1042,7 +1215,7 @@ function RevenueTab({
                         {formatCurrency(p.avgPerJob)}
                       </td>
                       <td className="px-3 py-2.5 text-right text-gray-600">
-                        {formatCurrency(p.houseCut)}
+                        {formatCurrency(p.houseCutTotal)}
                       </td>
                       <td className="px-4 py-2.5 text-right font-medium text-green-600">
                         {formatCurrency(p.netToCRN)}
@@ -1065,7 +1238,7 @@ function RevenueTab({
                       <td className="px-3 py-2.5 text-right text-gray-400">--</td>
                       <td className="px-3 py-2.5 text-right">
                         {formatCurrency(
-                          propSort.sorted.reduce((s, p) => s + p.houseCut, 0)
+                          propSort.sorted.reduce((s, p) => s + p.houseCutTotal, 0)
                         )}
                       </td>
                       <td className="px-4 py-2.5 text-right text-green-600">
@@ -1252,7 +1425,7 @@ function TeamTab({
                 <tbody className="divide-y divide-gray-50">
                   {earningsSort.sorted.map((w) => (
                     <tr key={w.userId} className="hover:bg-gray-50">
-                      <td className="px-4 py-2.5 font-medium text-gray-900">{(w as any).userName ?? (w as any).name}</td>
+                      <td className="px-4 py-2.5 font-medium text-gray-900">{w.userName}</td>
                       <td className="px-3 py-2.5 text-right text-gray-600">{w.jobsWorked}</td>
                       <td className="px-3 py-2.5 text-right text-gray-600">
                         {w.totalShares.toFixed(1)}
@@ -1350,7 +1523,7 @@ function TeamTab({
                 <tbody className="divide-y divide-gray-50">
                   {ten99Summary.map((e) => (
                     <tr key={e.userId} className="hover:bg-gray-50">
-                      <td className="px-4 py-2.5 font-medium text-gray-900">{(e as any).userName ?? (e as any).name}</td>
+                      <td className="px-4 py-2.5 font-medium text-gray-900">{e.userName}</td>
                       <td className="px-3 py-2.5 text-right font-medium">
                         {formatCurrency(e.totalPaid)}
                       </td>
@@ -1406,6 +1579,8 @@ function TaxTab({
   }
 
   const totalScheduleC = scheduleCData.reduce((s, l) => s + l.amount, 0);
+  const totalDeductions = pnl ? pnlTotalDeductions(pnl) : 0;
+  const expenseRows = pnl ? pnlExpenseRows(pnl) : [];
 
   return (
     <div className="space-y-6">
@@ -1425,7 +1600,7 @@ function TaxTab({
             <div>
               <p className="text-sm text-indigo-600 font-medium">Total Expenses</p>
               <p className="text-xl font-bold text-gray-900">
-                {formatCurrency(pnl.operatingExpenses.total)}
+                {formatCurrency(totalDeductions)}
               </p>
             </div>
             <div>
@@ -1433,7 +1608,7 @@ function TaxTab({
               <p
                 className={cn(
                   "text-xl font-bold",
-                  pnl?.netProfit ?? 0 >= 0 ? "text-green-700" : "text-red-700"
+                  (pnl?.netProfit ?? 0) >= 0 ? "text-green-700" : "text-red-700"
                 )}
               >
                 {formatCurrency(pnl?.netProfit ?? 0)}
@@ -1444,7 +1619,7 @@ function TaxTab({
                 Est. SE Tax (15.3%)
               </p>
               <p className="text-xl font-bold text-gray-900">
-                {formatCurrency(Math.max(pnl?.netProfit ?? 0 * 0.153, 0))}
+                {formatCurrency(Math.max((pnl?.netProfit ?? 0) * 0.153, 0))}
               </p>
             </div>
           </div>
@@ -1509,7 +1684,7 @@ function TaxTab({
       </Card>
 
       {/* Expense Detail from P&L */}
-      {pnl && pnl?.operatingExpenses?.byCategory.length > 0 && (
+      {pnl && expenseRows.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -1534,15 +1709,15 @@ function TaxTab({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {pnl?.operatingExpenses?.byCategory.map((cat) => (
-                    <tr key={cat.name} className="hover:bg-gray-50">
-                      <td className="px-4 py-2.5 font-medium text-gray-900">{cat.name}</td>
+                  {expenseRows.map((row) => (
+                    <tr key={row.key} className="hover:bg-gray-50">
+                      <td className="px-4 py-2.5 font-medium text-gray-900">{row.label}</td>
                       <td className="px-3 py-2.5 text-right font-medium">
-                        {formatCurrency(cat.amount)}
+                        {formatCurrency(row.amount)}
                       </td>
                       <td className="px-4 py-2.5 text-right text-gray-600">
-                        {pnl.operatingExpenses.total > 0
-                          ? formatPct((cat.amount / pnl.operatingExpenses.total) * 100)
+                        {totalDeductions > 0
+                          ? formatPct((row.amount / totalDeductions) * 100)
                           : "--"}
                       </td>
                     </tr>
@@ -1552,7 +1727,7 @@ function TaxTab({
                   <tr className="border-t-2 border-gray-200 bg-gray-50 font-semibold">
                     <td className="px-4 py-2.5">Total Expenses</td>
                     <td className="px-3 py-2.5 text-right">
-                      {formatCurrency(pnl.operatingExpenses.total)}
+                      {formatCurrency(totalDeductions)}
                     </td>
                     <td className="px-4 py-2.5 text-right">100%</td>
                   </tr>
@@ -1624,7 +1799,7 @@ function TaxTab({
                         )}
                       >
                         <td className="px-4 py-2.5 font-medium text-gray-900">
-                          {(e as any).userName ?? (e as any).name}
+                          {e.userName}
                         </td>
                         <td className="px-3 py-2.5 text-right font-medium">
                           {formatCurrency(e.totalPaid)}

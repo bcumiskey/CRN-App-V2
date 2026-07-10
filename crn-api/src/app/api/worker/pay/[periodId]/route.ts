@@ -3,12 +3,19 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
 import { success, error, notFound } from "@/lib/responses";
 import { calculateJob } from "crn-shared";
-import type { FinancialModel, AssignmentInput, ChargeInput } from "crn-shared";
+import type { FinancialModel } from "crn-shared";
+import { todayParts } from "@/lib/business-time";
+import { computeWorkerPeriodPay } from "../earnings";
 
 type RouteContext = { params: Promise<{ periodId: string }> };
 
 // ---------------------------------------------------------------------------
 // GET /api/worker/pay/[periodId] — Worker's earnings for a specific period
+//
+// Attribution matches pay-period close: open periods preview the sweep the
+// next close will run (all unpaid completed jobs up to the period end,
+// including catch-up jobs), closed/paid periods read the frozen PayStatement.
+// See ../earnings.ts.
 // ---------------------------------------------------------------------------
 
 export async function GET(request: NextRequest, { params }: RouteContext) {
@@ -34,70 +41,39 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
     });
     if (!period) return notFound("Pay period not found");
 
-    // Find all completed jobs in this period where worker has an assignment
-    const jobs = await prisma.job.findMany({
+    const { jobsWorked, totalEarned, jobs } = await computeWorkerPeriodPay(
+      period,
+      user.userId,
+      financialModel
+    );
+
+    // YTD summary, attributed the same way payroll is:
+    // - frozen PayStatement rows from every period ending this calendar year
+    //   (the ground truth of what was/will be paid), plus
+    // - the live value of unpaid completed work the next close will sweep
+    //   (teamPaid=false, no start floor — matches close's catch-up semantics)
+    // Current year in the business timezone (server runs UTC), matching how
+    // resolveDateRange and the 1099 summary resolve "this year"
+    const { year } = todayParts();
+    const yearStart = `${year}-01-01`;
+    const yearEnd = `${year}-12-31`;
+
+    const statements = await prisma.payStatement.findMany({
       where: {
-        status: { in: ["COMPLETED", "INVOICED"] },
-        scheduledDate: { gte: period.startDate, lte: period.endDate },
-        assignments: { some: { userId: user.userId } },
+        userId: user.userId,
+        payPeriod: { endDate: { gte: yearStart, lte: yearEnd } },
       },
-      include: {
-        property: { select: { name: true } },
-        assignments: {
-          include: {
-            user: { select: { id: true, name: true, isOwner: true } },
-          },
-        },
-        charges: true,
-      },
-      orderBy: { scheduledDate: "asc" },
+      select: { grossPay: true, jobsWorked: true },
     });
 
-    // Calculate each job and extract this worker's pay
-    let totalEarned = 0;
-    const jobDetails = jobs.map((job) => {
-      const assignments: AssignmentInput[] = job.assignments.map((a) => ({
-        userId: a.user.id,
-        userName: a.user.name,
-        share: a.share,
-        isOwner: a.user.isOwner,
-      }));
-
-      const charges: ChargeInput[] = job.charges.map((c) => ({
-        amount: c.amount,
-      }));
-
-      const calcResult = calculateJob(financialModel, {
-        totalFee: job.totalFee,
-        houseCutPercent: job.houseCutPercent,
-        charges,
-        assignments,
-      });
-
-      const workerPayment = calcResult.workerPayments.find(
-        (wp) => wp.userId === user.userId
-      );
-      const yourPay = workerPayment?.totalPay ?? 0;
-      totalEarned += yourPay;
-
-      return {
-        jobId: job.id,
-        date: job.scheduledDate,
-        propertyName: job.property?.name ?? "Unknown",
-        jobType: job.jobType,
-        yourPay,
-      };
-    });
-
-    // YTD summary: all completed jobs this calendar year
-    const now = new Date();
-    const yearStart = `${now.getFullYear()}-01-01`;
-    const yearEnd = `${now.getFullYear()}-12-31`;
-
-    const ytdJobs = await prisma.job.findMany({
+    const unpaidJobs = await prisma.job.findMany({
       where: {
         status: { in: ["COMPLETED", "INVOICED"] },
-        scheduledDate: { gte: yearStart, lte: yearEnd },
+        teamPaid: false,
+        OR: [
+          { completedDate: { lte: yearEnd } },
+          { completedDate: null, scheduledDate: { lte: yearEnd } },
+        ],
         assignments: { some: { userId: user.userId } },
       },
       include: {
@@ -111,42 +87,44 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
     });
 
     let ytdEarned = 0;
-    for (const job of ytdJobs) {
-      const assignments: AssignmentInput[] = job.assignments.map((a) => ({
-        userId: a.user.id,
-        userName: a.user.name,
-        share: a.share,
-        isOwner: a.user.isOwner,
-      }));
-
-      const charges: ChargeInput[] = job.charges.map((c) => ({
-        amount: c.amount,
-      }));
-
+    let ytdJobs = 0;
+    for (const s of statements) {
+      ytdEarned += s.grossPay;
+      ytdJobs += s.jobsWorked;
+    }
+    for (const job of unpaidJobs) {
       const calcResult = calculateJob(financialModel, {
         totalFee: job.totalFee,
         houseCutPercent: job.houseCutPercent,
-        charges,
-        assignments,
+        charges: job.charges.map((c) => ({ amount: c.amount })),
+        assignments: job.assignments.map((a) => ({
+          userId: a.user.id,
+          userName: a.user.name,
+          share: a.share,
+          isOwner: a.user.isOwner,
+        })),
       });
 
       const wp = calcResult.workerPayments.find(
         (w) => w.userId === user.userId
       );
       ytdEarned += wp?.totalPay ?? 0;
+      ytdJobs += 1;
     }
 
     return success({
       periodId: period.id,
       periodLabel: `${period.startDate} to ${period.endDate}`,
       periodStatus: period.status,
-      jobsWorked: jobDetails.length,
+      startDate: period.startDate,
+      endDate: period.endDate,
+      jobsWorked,
       totalEarned,
-      jobs: jobDetails,
+      jobs,
       ytd: {
-        year: now.getFullYear(),
-        totalEarned: ytdEarned,
-        totalJobs: ytdJobs.length,
+        year,
+        totalEarned: Math.round(ytdEarned * 100) / 100,
+        totalJobs: ytdJobs,
       },
     });
   } catch (err) {

@@ -453,6 +453,7 @@ model Invoice {
 
   // Relations
   lineItems           InvoiceLineItem[]
+  payments            Payment[]
 
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
@@ -481,6 +482,21 @@ model InvoiceLineItem {
   sortOrder           Int      @default(0)
 
   createdAt           DateTime @default(now())
+}
+
+model Payment {
+  id                  String   @id @default(cuid())
+  invoiceId           String
+  invoice             Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  amount              Float
+  date                String   // YYYY-MM-DD
+  method              String?  // check | venmo | zelle | ach | cash | other
+  notes               String?
+
+  createdAt           DateTime @default(now())
+
+  @@index([invoiceId])
 }
 
 // ============================================================

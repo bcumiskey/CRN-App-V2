@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { created, error, notFound } from "@/lib/responses";
 import { generateInvoiceNumber } from "@/lib/job-numbers";
+import { todayYMD, dueDateFromTerms } from "@/lib/business-time";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -25,7 +26,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     if (!source) return notFound("Invoice not found");
 
     const invoiceNumber = await generateInvoiceNumber();
-    const today = new Date().toISOString().split("T")[0];
+    const today = todayYMD();
 
     const duplicate = await prisma.invoice.create({
       data: {
@@ -35,6 +36,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         type: source.type,
         billingPeriod: source.billingPeriod,
         invoiceDate: today,
+        dueDate: dueDateFromTerms(today, source.paymentTerms),
         paymentTerms: source.paymentTerms,
         subtotal: source.subtotal,
         discount: source.discount,

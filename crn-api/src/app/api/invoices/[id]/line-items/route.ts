@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
 import { created, error, notFound, validationError } from "@/lib/responses";
+import { bankersRound } from "crn-shared";
 import { z } from "zod";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -40,7 +41,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
   try {
     const invoice = await prisma.invoice.findUnique({
       where: { id },
-      select: { id: true, status: true, subtotal: true, discount: true },
+      select: { id: true, status: true, discount: true },
     });
     if (!invoice) return notFound("Invoice not found");
 
@@ -60,13 +61,17 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       },
     });
 
-    // Recalculate invoice totals
-    const newSubtotal = invoice.subtotal + data.amount;
+    // Recalculate invoice totals from all line items
+    const allLineItems = await prisma.invoiceLineItem.findMany({
+      where: { invoiceId: id },
+      select: { amount: true },
+    });
+    const newSubtotal = bankersRound(allLineItems.reduce((sum, li) => sum + li.amount, 0));
     await prisma.invoice.update({
       where: { id },
       data: {
         subtotal: newSubtotal,
-        total: newSubtotal - invoice.discount,
+        total: bankersRound(newSubtotal - invoice.discount),
       },
     });
 
