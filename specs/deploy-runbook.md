@@ -1,0 +1,48 @@
+# CRN v2 — Deploy & Preview Runbook
+
+## Rollback discipline (standing policy)
+
+Every release round = one commit + one annotated tag on `main`:
+`v2.0-pre-overhaul` (anchor) → `v2.1.0` (bug overhaul) → `v2.2.0` (email/PDF/payments) → …
+
+- **Code rollback:** `git revert <release commit>` (each round reverts independently), or redeploy the previous tag from Vercel's deployment list (instant).
+- **DB rollback:** migrations are additive-only (new tables/indexes, never destructive), so rolling code back is always safe against a migrated DB. Before each `prisma migrate deploy`: export via `GET /api/backup/export` AND snapshot/branch in Neon.
+
+## Fixing the preview "all zeros" (one-time setup)
+
+The preview shows zeros because the new UI needs the new API + migrated DB.
+
+1. **Neon** → create a branch from production (e.g. `staging`) — instant copy of
+   real data. Copy its connection string.
+2. **Apply the migration to the staging branch only** (from `crn-api/`):
+   `$env:DATABASE_URL="<neon staging string>"; npx prisma migrate deploy`
+3. **Vercel, crn-api project** → Settings → Environment Variables, scope **Preview**:
+   - `DATABASE_URL` = Neon staging string
+   - `BUSINESS_TIMEZONE` = Alex's IANA zone (defaults to `America/New_York`)
+   - leave `RESEND_API_KEY` unset in Preview (Send falls back to mark-as-sent — no accidental emails)
+4. **Vercel, crn-web project** → Preview-scoped API-base env var = crn-api's
+   branch alias URL (`crn-app-v2-git-<branch>-….vercel.app`).
+5. Redeploy both previews (Vercel → Deployments → Redeploy latest on the branch).
+6. Recommended: enable **Deployment Protection** for previews on both projects
+   (the API still runs the dev auth bypass; preview URLs shouldn't be public).
+
+## Production deploy (per release)
+
+1. Neon snapshot/branch + `GET /api/backup/export`.
+2. Production env vars set: `BUSINESS_TIMEZONE`; for email `RESEND_API_KEY` +
+   `EMAIL_FROM` (domain must be DNS-verified in Resend first) + optional `EMAIL_REPLY_TO`.
+3. Merge the release PR into `main` (this is the production deploy trigger).
+4. `npx prisma migrate deploy` against production (from `crn-api/` with prod `DATABASE_URL`).
+5. One-time backfills, dry-run first, then `--apply` (from `crn-api/`):
+   - `npx tsx prisma/backfill-team-paid.ts` — **must run before Alex's next pay-period close**
+   - `npx tsx prisma/backfill-invoice-payments.ts` — ledger entries for legacy paid invoices
+6. Smoke checks: invoice detail opens; Outstanding-by-Owner shows numbers;
+   record a $0.01 payment on a test invoice and delete it; reports P&L loads.
+
+## Rollback, per layer
+
+| Layer | How |
+|---|---|
+| Web/API code | Vercel → previous deployment → "Promote to Production" (or `git revert` + push) |
+| DB schema | Additive-only; leave in place (harmless to old code) or restore Neon snapshot |
+| Data (backfills) | Both scripts log exactly what they stamped; Neon snapshot is the hard undo |
