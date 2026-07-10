@@ -20,7 +20,8 @@ export function middleware(request: NextRequest) {
       headers: {
         "Access-Control-Allow-Origin": isAllowed ? origin : "",
         "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        "Access-Control-Allow-Headers":
+          "Content-Type, Authorization, x-vercel-protection-bypass, x-vercel-set-bypass-cookie",
         "Access-Control-Max-Age": "86400",
       },
     });
@@ -31,7 +32,10 @@ export function middleware(request: NextRequest) {
   if (isAllowed) {
     response.headers.set("Access-Control-Allow-Origin", origin);
     response.headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
-    response.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    response.headers.set(
+      "Access-Control-Allow-Headers",
+      "Content-Type, Authorization, x-vercel-protection-bypass, x-vercel-set-bypass-cookie"
+    );
   }
 
   return response;

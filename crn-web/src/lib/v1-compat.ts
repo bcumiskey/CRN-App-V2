@@ -12,7 +12,7 @@
  * Usage in V1 pages: replace `fetch('/api/...')` with `v1Fetch('/api/...')`
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://crn-api.vercel.app";
+import { API_BASE, apiAuthHeaders } from "./api";
 
 // ── Field mapping: V2 → V1 ─────────────────────────────────────
 
@@ -235,9 +235,9 @@ function generateColor(name: string): string {
 async function handleDashboardFetch(): Promise<Response> {
   try {
     const [statsRes, todayRes, upcomingRes] = await Promise.allSettled([
-      fetch(`${API_BASE}/api/dashboard/stats`, { headers: { "Content-Type": "application/json" } }),
-      fetch(`${API_BASE}/api/dashboard/today`, { headers: { "Content-Type": "application/json" } }),
-      fetch(`${API_BASE}/api/jobs?status=SCHEDULED&limit=10`, { headers: { "Content-Type": "application/json" } }),
+      fetch(`${API_BASE}/api/dashboard/stats`, { headers: { "Content-Type": "application/json", ...apiAuthHeaders() } }),
+      fetch(`${API_BASE}/api/dashboard/today`, { headers: { "Content-Type": "application/json", ...apiAuthHeaders() } }),
+      fetch(`${API_BASE}/api/jobs?status=SCHEDULED&limit=10`, { headers: { "Content-Type": "application/json", ...apiAuthHeaders() } }),
     ]);
 
     const stats = statsRes.status === "fulfilled" && statsRes.value.ok
@@ -330,6 +330,7 @@ export async function v1Fetch(
     body,
     headers: {
       "Content-Type": "application/json",
+      ...apiAuthHeaders(),
       ...options?.headers,
     },
   });
