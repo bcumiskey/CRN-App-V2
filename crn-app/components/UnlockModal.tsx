@@ -8,6 +8,9 @@
  *
  * When the server has no shared secret configured, no request ever returns
  * 401, so this modal never appears — zero behavior change.
+ *
+ * Cleaners without the admin passphrase use "Sign in as a team member" to
+ * switch to the worker login screen (see WorkerLoginModal).
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -18,11 +21,19 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 import { Lock } from "lucide-react-native";
-import { api, ApiError, clearApiSecret, onUnauthorized, setApiSecret } from "../services/api";
+import {
+  api,
+  ApiError,
+  clearApiSecret,
+  onUnauthorized,
+  requestWorkerLogin,
+  setApiSecret,
+} from "../services/api";
 import { Button } from "./ui/Button";
 
 export function UnlockModal() {
@@ -63,6 +74,15 @@ export function UnlockModal() {
     }
   }, [passphrase, verifying, queryClient]);
 
+  // Hand off to the worker login screen — a cleaner who receives the app
+  // fresh signs in with their own email + password instead of a passphrase.
+  const handleTeamSignIn = useCallback(() => {
+    setVisible(false);
+    setPassphrase("");
+    setErrorMessage(null);
+    requestWorkerLogin();
+  }, []);
+
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={() => {}}>
       <KeyboardAvoidingView
@@ -101,6 +121,13 @@ export function UnlockModal() {
           >
             Unlock
           </Button>
+          <TouchableOpacity
+            style={styles.teamLink}
+            onPress={handleTeamSignIn}
+            disabled={verifying}
+          >
+            <Text style={styles.teamLinkText}>Sign in as a team member</Text>
+          </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -168,5 +195,14 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#dc2626",
     marginBottom: 12,
+  },
+  teamLink: {
+    marginTop: 14,
+    paddingVertical: 4,
+  },
+  teamLinkText: {
+    fontSize: 14,
+    color: "#2563eb",
+    fontWeight: "500",
   },
 });

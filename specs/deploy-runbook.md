@@ -80,6 +80,26 @@ add real icon/splash assets before any store submission. OTA updates
    (entered once per device; "Lock this device" clears it).
 5. Rollback: remove the env var and redeploy — instantly back to open mode.
 
+## Worker logins (v2.5) — activation
+
+Per-cleaner identity: cleaners sign in with email + password at
+`https://crn-web.vercel.app/team-portal/login` (any browser — this is the
+iPhone path) or in the mobile app. Inert until configured.
+
+1. Apply the migration (adds nullable `User.passwordHash`):
+   `npx prisma migrate deploy` from `crn-api/`.
+2. Secrets: worker tokens sign with `WORKER_SESSION_SECRET`, falling back to
+   `API_SHARED_SECRET` — so if the admin passphrase is set, worker login just
+   works; set a separate `WORKER_SESSION_SECRET` if you want to be able to
+   rotate them independently. With neither set, the login route returns 503
+   and nothing changes.
+3. Alex sets each cleaner's password: Team page → member → **Portal access**
+   → Set portal password (min 8 chars). Removing access = clearing it there.
+4. Cleaners: browser portal (Today / Schedule / My Pay, their own data only)
+   or the mobile app's "Sign in as a team member". Log out / lock available
+   on both. Tokens last 30 days.
+5. Rotating a secret invalidates all worker sessions (they just log in again).
+
 ## Rollback, per layer
 
 | Layer | How |

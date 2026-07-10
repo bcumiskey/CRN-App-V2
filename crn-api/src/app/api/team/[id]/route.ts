@@ -3,7 +3,17 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { success, error, notFound, validationError } from "@/lib/responses";
+import { hashPassword } from "@/lib/worker-auth";
 import { z } from "zod";
+
+/**
+ * Never expose the password hash — replace it with a boolean flag so the
+ * admin UI can show whether portal access is configured.
+ */
+function sanitizeMember<T extends { passwordHash: string | null }>(member: T) {
+  const { passwordHash, ...safe } = member;
+  return { ...safe, hasPortalPassword: passwordHash !== null };
+}
 
 // ---------------------------------------------------------------------------
 // GET /api/team/[id] — Team member detail
@@ -57,7 +67,7 @@ export async function GET(
     });
 
     return success({
-      member,
+      member: sanitizeMember(member),
       recentAssignments: recentAssignments.map((a) => ({
         id: a.id,
         share: a.share,
@@ -98,6 +108,14 @@ const updateMemberSchema = z.object({
   taxIdOnFile: z.boolean().optional(),
   taxIdLastFour: z.string().nullable().optional(),
   mailingAddress: z.string().nullable().optional(),
+  // Worker portal password: min 8 chars to set, empty string to clear.
+  // Hashed before storage; the plaintext is never persisted or logged.
+  portalPassword: z
+    .union([
+      z.string().min(8, "Portal password must be at least 8 characters"),
+      z.literal(""),
+    ])
+    .optional(),
 });
 
 export async function PATCH(
@@ -133,11 +151,19 @@ export async function PATCH(
       if (emailExists) return error("A team member with this email already exists", 409);
     }
 
+    // portalPassword is not a column — map it to passwordHash (set or clear)
+    const { portalPassword, ...fields } = data;
+
     // If status is changing, set statusChangedAt to today
-    const updateData: Record<string, unknown> = { ...data };
+    const updateData: Record<string, unknown> = { ...fields };
     if (data.status && data.status !== existing.status) {
       const today = new Date();
       updateData.statusChangedAt = today.toISOString().split("T")[0]; // YYYY-MM-DD
+    }
+
+    if (portalPassword !== undefined) {
+      updateData.passwordHash =
+        portalPassword === "" ? null : hashPassword(portalPassword);
     }
 
     const member = await prisma.user.update({
@@ -163,7 +189,22 @@ export async function PATCH(
       details: { fields: changedFields },
     });
 
-    return success(member);
+    // Dedicated audit entry for portal-access changes (field names only —
+    // never the password, hash, or any derived value)
+    if (portalPassword !== undefined) {
+      await logAudit({
+        userId: result.user.userId,
+        action: "update",
+        entityType: "user",
+        entityId: id,
+        summary:
+          portalPassword === ""
+            ? `Cleared portal password for ${member.name}`
+            : `Set portal password for ${member.name}`,
+      });
+    }
+
+    return success(sanitizeMember(member));
   } catch (err) {
     console.error("[PATCH /api/team/[id]]", err);
     return error("Failed to update team member", 500);

@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
-import { api } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { cn, formatDate } from "@/lib/utils";
 import { JobCard } from "../JobCard";
+import { portalApi } from "../portal-api";
 import {
   addDaysYMD,
   parseYMD,
@@ -33,7 +33,7 @@ export default function TeamPortalSchedulePage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await api.get<{ jobs: WorkerJob[]; startDate: string; endDate: string }>(
+      const data = await portalApi.get<{ jobs: WorkerJob[]; startDate: string; endDate: string }>(
         "/worker/schedule",
         { startDate: weekStart, endDate: weekEnd }
       );

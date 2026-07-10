@@ -59,6 +59,10 @@ model CompanySettings {
 model User {
   id                  String   @id @default(cuid())
   clerkId             String   @unique
+  // Worker-portal password, set by the admin. Stored as
+  // "scrypt$<saltB64>$<hashB64>" (scrypt N=16384 r=8 p=1, 32-byte key,
+  // 16-byte random salt). Null = no portal login configured. Never expose.
+  passwordHash        String?
   email               String   @unique
   name                String
   phone               String?
