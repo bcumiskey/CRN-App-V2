@@ -111,7 +111,9 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       const wp = calcResult.workerPayments.find(
         (w) => w.userId === workerUserId
       );
-      ytdEarned += wp?.totalPay ?? 0;
+      const adjustment =
+        job.assignments.find((a) => a.user.id === workerUserId)?.payAdjustment ?? 0;
+      ytdEarned += (wp?.totalPay ?? 0) + adjustment;
       ytdJobs += 1;
     }
 

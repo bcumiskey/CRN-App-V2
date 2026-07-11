@@ -379,6 +379,10 @@ model JobAssignment {
   user                User     @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   share               Float    @default(1.0)
+  // Manual +/- dollar adjustment to this worker's computed pay for this job
+  // (bonus, correction, deduction). Added on top of the share-based amount
+  // everywhere pay is computed.
+  payAdjustment       Float    @default(0)
 
   createdAt           DateTime @default(now())
 

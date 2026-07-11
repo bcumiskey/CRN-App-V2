@@ -27,6 +27,7 @@ interface Assignment {
   id: string;
   share: number;
   isOwner: boolean;
+  payAdjustment: number;
   user: { id: string; name: string };
 }
 
@@ -67,6 +68,78 @@ const shareLevelLabel = (share: number): string => {
   return `${share}`;
 };
 
+/** One crew member row with an editable per-job pay adjustment (saved on blur). */
+function CrewMemberRow({
+  jobId,
+  assignment,
+  onSaved,
+}: {
+  jobId: string;
+  assignment: Assignment;
+  onSaved: () => void | Promise<void>;
+}) {
+  const [adj, setAdj] = useState(String(assignment.payAdjustment ?? 0));
+  const [saving, setSaving] = useState(false);
+
+  // Keep the input in sync if the job refetches with a new value.
+  useEffect(() => {
+    setAdj(String(assignment.payAdjustment ?? 0));
+  }, [assignment.payAdjustment]);
+
+  const save = async () => {
+    const value = parseFloat(adj);
+    if (isNaN(value)) {
+      setAdj(String(assignment.payAdjustment ?? 0));
+      return;
+    }
+    if (value === (assignment.payAdjustment ?? 0)) return;
+    setSaving(true);
+    try {
+      await api.patch(`/jobs/${jobId}/assignments/${assignment.id}`, { payAdjustment: value });
+      await onSaved();
+    } catch (err) {
+      console.error(err);
+      setAdj(String(assignment.payAdjustment ?? 0));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg gap-2">
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 text-sm font-semibold shrink-0">
+          {assignment.user.name.charAt(0)}
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-gray-900 truncate">{assignment.user.name}</p>
+          {assignment.isOwner && <p className="text-xs text-purple-600">Owner</p>}
+        </div>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <Badge variant="info" className="bg-blue-50">
+          {shareLevelLabel(assignment.share)}
+        </Badge>
+        <label className="flex items-center gap-1" title="Manual pay adjustment for this job (+/- dollars)">
+          <span className="text-xs text-gray-400">Adj $</span>
+          <input
+            type="number"
+            step="0.01"
+            value={adj}
+            onChange={(e) => setAdj(e.target.value)}
+            onBlur={save}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+            }}
+            disabled={saving}
+            className="w-20 px-2 py-1 border border-gray-300 rounded text-right text-sm disabled:opacity-50"
+          />
+        </label>
+      </div>
+    </div>
+  );
+}
+
 export default function JobDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -87,6 +160,9 @@ export default function JobDetailPage() {
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [id]);
+
+  const refetchJob = () =>
+    api.get<Job>(`/jobs/${id}`).then(setJob).catch(console.error);
 
   const handleAction = async (action: string) => {
     if (!job) return;
@@ -252,21 +328,12 @@ export default function JobDetailPage() {
               ) : (
                 <div className="space-y-3">
                   {job.assignments.map((a) => (
-                    <div key={a.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 text-sm font-semibold">
-                          {a.user.name.charAt(0)}
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">{a.user.name}</p>
-                          {a.isOwner && <p className="text-xs text-purple-600">Owner</p>}
-                        </div>
-                      </div>
-                      <Badge variant="info" className="bg-blue-50">
-                        {shareLevelLabel(a.share)}
-                      </Badge>
-                    </div>
+                    <CrewMemberRow key={a.id} jobId={job.id} assignment={a} onSaved={refetchJob} />
                   ))}
+                  <p className="text-xs text-gray-400 pt-1">
+                    Adjustment is a manual +/- to a worker&apos;s computed pay for this job
+                    (bonus, correction, or deduction). It flows into their pay period and paystub.
+                  </p>
                 </div>
               )}
             </CardContent>
@@ -329,12 +396,22 @@ export default function JobDetailPage() {
                   {result.workerPayments.length > 0 && (
                     <div className="border-t border-gray-100 pt-3 space-y-2">
                       <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Worker Pay</p>
-                      {result.workerPayments.map((w) => (
-                        <div key={w.userId} className="flex justify-between text-sm">
-                          <span className="text-gray-500">{w.userName}</span>
-                          <span className="font-semibold text-green-700">{formatCurrency(w.totalPay)}</span>
-                        </div>
-                      ))}
+                      {result.workerPayments.map((w) => {
+                        const adj = job.assignments.find((a) => a.user.id === w.userId)?.payAdjustment ?? 0;
+                        return (
+                          <div key={w.userId} className="flex justify-between text-sm">
+                            <span className="text-gray-500">
+                              {w.userName}
+                              {adj !== 0 && (
+                                <span className={adj > 0 ? "text-green-600 ml-1" : "text-red-600 ml-1"}>
+                                  ({adj > 0 ? "+" : ""}{formatCurrency(adj)} adj)
+                                </span>
+                              )}
+                            </span>
+                            <span className="font-semibold text-green-700">{formatCurrency(w.totalPay + adj)}</span>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
