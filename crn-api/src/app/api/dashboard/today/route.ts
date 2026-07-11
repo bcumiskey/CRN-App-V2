@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     const jobs = await prisma.job.findMany({
       where: { scheduledDate: today },
       include: {
-        property: { select: { id: true, name: true, code: true } },
+        property: { select: { id: true, name: true, code: true, color: true } },
         assignments: {
           include: {
             user: { select: { id: true, name: true, avatarUrl: true } },
