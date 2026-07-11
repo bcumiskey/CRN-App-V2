@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { success, error, notFound, validationError } from "@/lib/responses";
+import { todayYMD } from "@/lib/business-time";
 import { z } from "zod";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -79,6 +80,12 @@ const updateJobSchema = z.object({
     .nullable()
     .optional(),
   propertyId: z.string().optional(),
+  // Admin can set job status directly (V1 parity: completing a job was a
+  // simple toggle, no forced SCHEDULED→IN_PROGRESS→COMPLETED walk). The
+  // /status route keeps the strict state machine for the worker app.
+  status: z
+    .enum(["SCHEDULED", "IN_PROGRESS", "COMPLETED", "INVOICED", "CANCELLED"])
+    .optional(),
   // Crew editing from the jobs page (v1-compat maps teamMemberIds → userIds).
   // When present, the job's assignments are synced to exactly this set.
   userIds: z.array(z.string()).optional(),
@@ -125,6 +132,28 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
         jobFields[field] !== undefined && jobFields[field] !== existing[field]
     );
 
+    // Status side effects (mirror /api/jobs/[id]/status): stamp completedDate
+    // in the business timezone when a job is marked COMPLETED, clear it when a
+    // job is put back to SCHEDULED, and lock any non-SCHEDULED status against
+    // calendar sync. Admin edits set status freely (no strict state machine).
+    // The jobs modal maps an INVOICED job's "completed" flag back to
+    // status=COMPLETED; ignore that so editing an invoiced job never silently
+    // un-invoices it. Genuine un-invoicing goes through the invoice void flow.
+    if (jobFields.status === "COMPLETED" && existing.status === "INVOICED") {
+      delete jobFields.status;
+    }
+
+    const statusEffects: Record<string, unknown> = {};
+    let statusLock = false;
+    if (jobFields.status !== undefined && jobFields.status !== existing.status) {
+      if (jobFields.status === "COMPLETED" && existing.status !== "COMPLETED") {
+        statusEffects.completedDate = todayYMD();
+      } else if (jobFields.status === "SCHEDULED") {
+        statusEffects.completedDate = null;
+      }
+      if (jobFields.status !== "SCHEDULED") statusLock = true;
+    }
+
     // Sync crew to exactly `userIds` when provided (remove dropped members,
     // add new ones at their default share, leave unchanged members and their
     // shares/payment state alone), then update the job — all in one
@@ -162,7 +191,8 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
         where: { id },
         data: {
           ...jobFields,
-          ...(shouldLock ? { syncLocked: true } : {}),
+          ...statusEffects,
+          ...(shouldLock || statusLock ? { syncLocked: true } : {}),
         },
         include: {
           property: { select: { id: true, name: true, code: true } },
