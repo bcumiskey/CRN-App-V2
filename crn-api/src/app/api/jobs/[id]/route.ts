@@ -79,6 +79,9 @@ const updateJobSchema = z.object({
     .nullable()
     .optional(),
   propertyId: z.string().optional(),
+  // Crew editing from the jobs page (v1-compat maps teamMemberIds → userIds).
+  // When present, the job's assignments are synced to exactly this set.
+  userIds: z.array(z.string()).optional(),
 });
 
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
@@ -99,6 +102,9 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 
   const data = parsed.data;
 
+  // Crew list is not a Job column — pull it out before building the update.
+  const { userIds, ...jobFields } = data;
+
   try {
     const existing = await prisma.job.findUnique({ where: { id } });
     if (!existing) return notFound("Job not found");
@@ -116,23 +122,57 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     ] as const;
     const shouldLock = SYNC_LOCK_FIELDS.some(
       (field) =>
-        data[field] !== undefined && data[field] !== existing[field]
+        jobFields[field] !== undefined && jobFields[field] !== existing[field]
     );
 
-    const job = await prisma.job.update({
-      where: { id },
-      data: {
-        ...data,
-        ...(shouldLock ? { syncLocked: true } : {}),
-      },
-      include: {
-        property: { select: { id: true, name: true, code: true } },
-        assignments: {
-          include: {
-            user: { select: { id: true, name: true } },
+    // Sync crew to exactly `userIds` when provided (remove dropped members,
+    // add new ones at their default share, leave unchanged members and their
+    // shares/payment state alone), then update the job — all in one
+    // transaction so the returned job reflects the final crew.
+    const job = await prisma.$transaction(async (tx) => {
+      if (userIds !== undefined) {
+        const desired = new Set(userIds);
+        const current = await tx.jobAssignment.findMany({
+          where: { jobId: id },
+          select: { id: true, userId: true },
+        });
+        const currentIds = new Set(current.map((a) => a.userId));
+        const toRemove = current.filter((a) => !desired.has(a.userId)).map((a) => a.id);
+        const toAdd = userIds.filter((uid) => !currentIds.has(uid));
+
+        if (toRemove.length) {
+          await tx.jobAssignment.deleteMany({ where: { id: { in: toRemove } } });
+        }
+        if (toAdd.length) {
+          const newUsers = await tx.user.findMany({
+            where: { id: { in: toAdd } },
+            select: { id: true, defaultShare: true },
+          });
+          const shareOf = new Map(newUsers.map((u) => [u.id, u.defaultShare ?? 1.0]));
+          for (const uid of toAdd) {
+            if (!shareOf.has(uid)) continue; // skip unknown user ids
+            await tx.jobAssignment.create({
+              data: { jobId: id, userId: uid, share: shareOf.get(uid)! },
+            });
+          }
+        }
+      }
+
+      return tx.job.update({
+        where: { id },
+        data: {
+          ...jobFields,
+          ...(shouldLock ? { syncLocked: true } : {}),
+        },
+        include: {
+          property: { select: { id: true, name: true, code: true } },
+          assignments: {
+            include: {
+              user: { select: { id: true, name: true } },
+            },
           },
         },
-      },
+      });
     });
 
     await logAudit({
