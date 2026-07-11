@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
+import { resolveWorkerUserId } from "@/lib/worker-view";
 import { success, error, notFound } from "@/lib/responses";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -13,14 +14,15 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
   const result = await requireAuth(request);
   if (result.error) return result.error;
 
-  const { user } = result;
+  const scope = await resolveWorkerUserId(request, result.user);
+  if (scope.error) return scope.error;
   const { id: propertyId } = await params;
 
   try {
     // Scoping: worker must have at least one assignment at this property
     const hasAssignment = await prisma.jobAssignment.findFirst({
       where: {
-        userId: user.userId,
+        userId: scope.userId,
         job: { propertyId },
       },
       select: { id: true },

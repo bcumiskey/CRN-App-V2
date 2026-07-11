@@ -6,8 +6,9 @@ import { ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { formatDate } from "@/lib/utils";
+import { getWorkerToken } from "@/lib/auth-secret";
 import { JobCard } from "./JobCard";
-import { portalApi } from "./portal-api";
+import { portalApi, VIEW_AS_EVENT } from "./portal-api";
 import type { WorkerJob } from "./lib";
 
 function toast(msg: string, type: "success" | "error" = "success") {
@@ -32,6 +33,9 @@ export default function TeamPortalTodayPage() {
   const [date, setDate] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  // Start/Complete only for a real signed-in worker; admin preview is read-only.
+  const [canAct, setCanAct] = useState(false);
+  useEffect(() => setCanAct(!!getWorkerToken()), []);
 
   const load = useCallback(async () => {
     try {
@@ -47,6 +51,9 @@ export default function TeamPortalTodayPage() {
 
   useEffect(() => {
     load();
+    // Admin "viewing as" changed → reload for the newly selected worker.
+    window.addEventListener(VIEW_AS_EVENT, load);
+    return () => window.removeEventListener(VIEW_AS_EVENT, load);
   }, [load]);
 
   const updateStatus = async (job: WorkerJob, status: "IN_PROGRESS" | "COMPLETED") => {
@@ -91,7 +98,7 @@ export default function TeamPortalTodayPage() {
             key={job.id}
             job={job}
             actions={
-              job.status === "SCHEDULED" ? (
+              !canAct ? undefined : job.status === "SCHEDULED" ? (
                 <Button
                   size="sm"
                   loading={updatingId === job.id}

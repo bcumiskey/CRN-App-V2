@@ -25,6 +25,38 @@ export const PORTAL_LOGIN_PATH = "/team-portal/login";
 /** Query flag the login page reads to show a "session expired" message. */
 export const SESSION_EXPIRED_PARAM = "expired";
 
+// ── Admin "viewing as" preview ────────────────────────────────────────────
+// An admin has no job assignments of their own, so the portal would render
+// empty. Instead the admin picks WHICH worker's view to see; that selection is
+// stored per-tab and sent as ?asUserId on every worker call. The API honors it
+// only for admins (silently ignored for real workers). getViewAsUserId returns
+// null whenever a worker token is present, so a cleaner's own device never
+// sends the param.
+
+export const VIEW_AS_STORAGE_KEY = "crn.portalViewAs";
+export const VIEW_AS_EVENT = "crn:portal-view-as";
+
+export function getViewAsUserId(): string | null {
+  if (typeof window === "undefined") return null;
+  if (getWorkerToken()) return null; // real worker → always themselves
+  try {
+    return window.sessionStorage.getItem(VIEW_AS_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setViewAsUserId(userId: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(VIEW_AS_STORAGE_KEY, userId);
+  } catch {
+    /* sessionStorage unavailable — selection just won't persist */
+  }
+  // Tell the portal pages to re-fetch for the newly selected worker.
+  window.dispatchEvent(new Event(VIEW_AS_EVENT));
+}
+
 /** Clear the worker session and send the browser back to the login page. */
 export function endWorkerSession(expired: boolean): void {
   clearWorkerToken();
@@ -45,14 +77,18 @@ async function request<T>(path: string, options: FetchOptions = {}): Promise<T> 
   const { body, params, ...fetchOptions } = options;
 
   let url = `${API_BASE}/api${path}`;
+  const sp = new URLSearchParams();
   if (params) {
-    const sp = new URLSearchParams();
     for (const [k, v] of Object.entries(params)) {
       if (v !== undefined && v !== "") sp.set(k, String(v));
     }
-    const qs = sp.toString();
-    if (qs) url += `?${qs}`;
   }
+  // Admin preview scopes every worker call to the selected worker. Never set
+  // for a real worker (getViewAsUserId returns null when a token is present).
+  const viewAs = getViewAsUserId();
+  if (viewAs) sp.set("asUserId", viewAs);
+  const qs = sp.toString();
+  if (qs) url += `?${qs}`;
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",

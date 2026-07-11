@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
+import { resolveWorkerUserId } from "@/lib/worker-view";
 import { success, error } from "@/lib/responses";
 import { todayYMD, addDaysYMD } from "@/lib/business-time";
 
@@ -23,7 +24,8 @@ export async function GET(request: NextRequest) {
   const result = await requireAuth(request);
   if (result.error) return result.error;
 
-  const { user } = result;
+  const scope = await resolveWorkerUserId(request, result.user);
+  if (scope.error) return scope.error;
   const params = request.nextUrl.searchParams;
 
   const defaults = getWeekBounds();
@@ -40,7 +42,7 @@ export async function GET(request: NextRequest) {
     const jobs = await prisma.job.findMany({
       where: {
         scheduledDate: { gte: startDate, lte: endDate },
-        assignments: { some: { userId: user.userId } },
+        assignments: { some: { userId: scope.userId } },
       },
       include: {
         property: {

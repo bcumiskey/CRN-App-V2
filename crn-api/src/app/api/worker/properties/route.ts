@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
+import { resolveWorkerUserId } from "@/lib/worker-view";
 import { success, error } from "@/lib/responses";
 
 // ---------------------------------------------------------------------------
@@ -11,12 +12,13 @@ export async function GET(request: NextRequest) {
   const result = await requireAuth(request);
   if (result.error) return result.error;
 
-  const { user } = result;
+  const scope = await resolveWorkerUserId(request, result.user);
+  if (scope.error) return scope.error;
 
   try {
     // Find distinct propertyIds from this worker's assignments
     const assignments = await prisma.jobAssignment.findMany({
-      where: { userId: user.userId },
+      where: { userId: scope.userId },
       select: {
         job: { select: { propertyId: true } },
       },
@@ -46,7 +48,7 @@ export async function GET(request: NextRequest) {
         where: {
           propertyId: pid,
           status: { in: ["COMPLETED", "INVOICED"] },
-          assignments: { some: { userId: user.userId } },
+          assignments: { some: { userId: scope.userId } },
         },
         select: { completedDate: true, scheduledDate: true },
         orderBy: { scheduledDate: "desc" },

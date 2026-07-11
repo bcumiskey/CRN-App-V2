@@ -11,7 +11,13 @@ import {
   getWorkerName,
   getWorkerToken,
 } from "@/lib/auth-secret";
-import { endWorkerSession, PORTAL_LOGIN_PATH } from "./portal-api";
+import {
+  endWorkerSession,
+  getViewAsUserId,
+  portalApi,
+  PORTAL_LOGIN_PATH,
+  setViewAsUserId,
+} from "./portal-api";
 
 const tabs = [
   { href: "/team-portal", label: "Today", icon: Sun },
@@ -107,22 +113,126 @@ export default function TeamPortalLayout({ children }: { children: ReactNode }) 
     );
   }
 
-  // ── ADMIN MODE — unchanged v2.4 preview behavior ──────────────────────────
+  // ── ADMIN MODE — preview the portal as a chosen worker ────────────────────
   return (
     <div className="p-6 max-w-4xl">
-      {/* Preview banner — visible on every portal page in admin mode */}
-      <div className="mb-4 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-        <HardHat size={18} className="text-amber-600 mt-0.5 shrink-0" />
-        <p className="text-sm text-amber-800">
-          Team Portal admin view — this is what a cleaner sees after signing in
-          at /team-portal/login, shown here with the admin&apos;s data.
-        </p>
-      </div>
+      <ViewAsBanner />
 
       <PageHeader title="Team Portal" subtitle="The worker view, inside the admin app" />
 
       {!isLoginPage && <PortalTabs pathname={pathname} />}
       {children}
+    </div>
+  );
+}
+
+interface PortalMember {
+  id: string;
+  name: string;
+  role: string;
+  status: string;
+  hasPortalPassword?: boolean;
+}
+
+/**
+ * Admin-mode banner with a "Viewing as" worker selector. Loads the team,
+ * defaults to the first active worker (persisted per-tab), and — via
+ * setViewAsUserId — makes every portal page re-fetch that worker's data.
+ */
+function ViewAsBanner() {
+  const [members, setMembers] = useState<PortalMember[] | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await portalApi.get<{ members: PortalMember[] }>("/team", {
+          status: "all",
+        });
+        if (cancelled) return;
+        const workers = data.members.filter((m) => m.role === "worker");
+        setMembers(workers);
+
+        const stored = getViewAsUserId();
+        const validStored =
+          stored && workers.some((w) => w.id === stored) ? stored : null;
+        const firstActive = workers.find((w) => w.status === "active") ?? workers[0];
+        const initial = validStored ?? firstActive?.id ?? null;
+        setSelectedId(initial);
+        // Set the default (and notify pages) when nothing valid was stored yet.
+        if (initial && initial !== stored) setViewAsUserId(initial);
+      } catch {
+        if (!cancelled) setFailed(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const onChange = (id: string) => {
+    setSelectedId(id);
+    setViewAsUserId(id);
+  };
+
+  const active = (members ?? []).filter(
+    (m) => m.status === "active" || m.status === "lame_duck"
+  );
+  const archived = (members ?? []).filter((m) => m.status === "archived");
+  const selectedName = members?.find((m) => m.id === selectedId)?.name;
+
+  return (
+    <div className="mb-4 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+      <HardHat size={18} className="text-amber-600 mt-0.5 shrink-0" />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm text-amber-800">
+          Admin preview
+          {selectedName ? (
+            <>
+              {" "}
+              — viewing the portal as <strong>{selectedName}</strong>
+            </>
+          ) : null}
+          . Workers sign in at{" "}
+          <code className="text-amber-900">/team-portal/login</code> for their own view.
+        </p>
+        {members && members.length > 0 ? (
+          <label className="mt-2 flex items-center gap-2 text-sm text-amber-800">
+            <span className="shrink-0">Viewing as:</span>
+            <select
+              value={selectedId ?? ""}
+              onChange={(e) => onChange(e.target.value)}
+              className="rounded-md border border-amber-300 bg-white px-2 py-1 text-gray-900 max-w-[16rem]"
+            >
+              <optgroup label="Active">
+                {active.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                    {m.hasPortalPassword ? " ✓" : ""}
+                  </option>
+                ))}
+              </optgroup>
+              {archived.length > 0 && (
+                <optgroup label="Archived">
+                  {archived.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+          </label>
+        ) : members && members.length === 0 ? (
+          <p className="mt-2 text-sm text-amber-700">
+            No team members yet — add them on the Team page.
+          </p>
+        ) : failed ? (
+          <p className="mt-2 text-sm text-amber-700">Couldn&apos;t load the team list.</p>
+        ) : null}
+      </div>
     </div>
   );
 }
