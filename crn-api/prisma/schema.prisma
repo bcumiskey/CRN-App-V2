@@ -338,6 +338,7 @@ model Job {
   clientPaidMethod    String?  // check | venmo | zelle | ach | cash | other
   teamPaid            Boolean  @default(false)
   teamPaidDate        String?
+  teamPaidMethod      String?  // check | venmo | zelle | cash | other
 
   // Source tracking (Rule #3)
   source              String   @default("manual") // manual | turno | google

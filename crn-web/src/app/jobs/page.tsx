@@ -93,6 +93,7 @@ interface Job {
   clientPaid: boolean
   teamPaid: boolean
   teamPaidAt: string | null
+  teamPaidMethod: string | null
   isBtoB: boolean
   source: string
   property: { id: string; name: string; color: string | null }
@@ -890,8 +891,8 @@ function JobsPageContent() {
                                     {job.teamPaid ? (
                                       <>
                                         <Check size={14} />
-                                        {job.assignments[0]?.paymentMethod
-                                          ? PAYMENT_METHODS.find(p => p.value === job.assignments[0]?.paymentMethod)?.label
+                                        {job.teamPaidMethod
+                                          ? PAYMENT_METHODS.find(p => p.value === job.teamPaidMethod)?.label
                                           : 'Paid'}
                                       </>
                                     ) : (
@@ -1108,7 +1109,7 @@ function JobsPageContent() {
                   <Check size={32} className="mx-auto text-blue-600 mb-2" />
                   <p className="font-medium text-blue-800">Team Already Paid</p>
                   <p className="text-sm text-blue-600 mt-1">
-                    via {PAYMENT_METHODS.find(p => p.value === selectedJobForTeamPayment.assignments[0]?.paymentMethod)?.label || 'Unknown Method'}
+                    via {PAYMENT_METHODS.find(p => p.value === selectedJobForTeamPayment.teamPaidMethod)?.label || 'Unknown Method'}
                   </p>
                 </div>
                 <div className="flex gap-3">
