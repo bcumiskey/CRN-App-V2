@@ -87,7 +87,10 @@ export async function computeWorkerPeriodPay(
     const workerPayment = calcResult.workerPayments.find(
       (wp) => wp.userId === userId
     );
-    const yourPay = workerPayment?.totalPay ?? 0;
+    // Manual per-assignment adjustment adds on top of the share-based pay.
+    const adjustment =
+      job.assignments.find((a) => a.user.id === userId)?.payAdjustment ?? 0;
+    const yourPay = (workerPayment?.totalPay ?? 0) + adjustment;
     totalEarned += yourPay;
 
     return {

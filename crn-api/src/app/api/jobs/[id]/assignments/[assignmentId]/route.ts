@@ -10,12 +10,18 @@ type RouteContext = {
 };
 
 // ---------------------------------------------------------------------------
-// PATCH /api/jobs/[id]/assignments/[assignmentId] — Update share
+// PATCH /api/jobs/[id]/assignments/[assignmentId] — Update share and/or the
+// manual pay adjustment (+/- dollars on top of computed pay)
 // ---------------------------------------------------------------------------
 
-const updateShareSchema = z.object({
-  share: z.number().min(0),
-});
+const updateAssignmentSchema = z
+  .object({
+    share: z.number().min(0).optional(),
+    payAdjustment: z.number().optional(),
+  })
+  .refine((d) => d.share !== undefined || d.payAdjustment !== undefined, {
+    message: "Provide share and/or payAdjustment",
+  });
 
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
   const result = await requireAdmin(request);
@@ -30,7 +36,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     return error("Invalid JSON body");
   }
 
-  const parsed = updateShareSchema.safeParse(body);
+  const parsed = updateAssignmentSchema.safeParse(body);
   if (!parsed.success) return validationError(parsed.error);
 
   try {
@@ -43,20 +49,33 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     });
     if (!assignment) return notFound("Assignment not found");
 
+    const updateData: { share?: number; payAdjustment?: number } = {};
+    if (parsed.data.share !== undefined) updateData.share = parsed.data.share;
+    if (parsed.data.payAdjustment !== undefined)
+      updateData.payAdjustment = parsed.data.payAdjustment;
+
     const updated = await prisma.jobAssignment.update({
       where: { id: assignmentId },
-      data: { share: parsed.data.share },
+      data: updateData,
       include: {
         user: { select: { id: true, name: true } },
       },
     });
+
+    const changes: string[] = [];
+    if (parsed.data.share !== undefined)
+      changes.push(`share ${assignment.share} → ${parsed.data.share}`);
+    if (parsed.data.payAdjustment !== undefined)
+      changes.push(
+        `pay adjustment ${assignment.payAdjustment} → ${parsed.data.payAdjustment}`
+      );
 
     await logAudit({
       userId: result.user.userId,
       action: "update",
       entityType: "job",
       entityId: id,
-      summary: `Updated ${assignment.user.name} share on job ${assignment.job.jobNumber}: ${assignment.share} → ${parsed.data.share}`,
+      summary: `Updated ${assignment.user.name} on job ${assignment.job.jobNumber}: ${changes.join(", ")}`,
     });
 
     return success(updated);

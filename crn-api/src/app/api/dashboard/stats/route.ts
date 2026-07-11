@@ -145,8 +145,11 @@ export async function GET(request: NextRequest) {
         })),
       });
 
+      const adjustmentOf = new Map(
+        job.assignments.map((a) => [a.userId, a.payAdjustment ?? 0])
+      );
       for (const wp of jobResult.workerPayments) {
-        owedToTeam += wp.totalPay;
+        owedToTeam += wp.totalPay + (adjustmentOf.get(wp.userId) ?? 0);
       }
     }
     owedToTeam = r2(owedToTeam);

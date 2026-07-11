@@ -75,14 +75,22 @@ export async function computePerWorkerEarnings(
       })),
     });
 
+    // Manual per-assignment adjustments (bonus/correction/deduction) add on top
+    // of the share-based pay and flow into the frozen paystub grossPay.
+    const adjustmentOf = new Map(
+      job.assignments.map((a) => [a.userId, a.payAdjustment ?? 0])
+    );
+
     for (const wp of jobResult.workerPayments) {
+      const adjustment = adjustmentOf.get(wp.userId) ?? 0;
+      const grossPay = wp.totalPay + adjustment;
       const existing = workerMap.get(wp.userId);
       if (existing) {
         existing.jobsWorked += 1;
         existing.totalShares += wp.share;
         existing.workerPoolPay += wp.workerPoolPay;
         existing.ownerPay += wp.ownerPay;
-        existing.grossPay += wp.totalPay;
+        existing.grossPay += grossPay;
       } else {
         workerMap.set(wp.userId, {
           userId: wp.userId,
@@ -91,7 +99,7 @@ export async function computePerWorkerEarnings(
           totalShares: wp.share,
           workerPoolPay: wp.workerPoolPay,
           ownerPay: wp.ownerPay,
-          grossPay: wp.totalPay,
+          grossPay,
         });
       }
     }
