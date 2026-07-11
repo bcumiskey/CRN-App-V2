@@ -191,9 +191,11 @@ function JobsPageContent() {
   const newJobParam = searchParams.get('newJob')
   const dateParam = searchParams.get('date')
 
-  const [activeTab, setActiveTab] = useState<'jobs' | 'recurring'>(
-    tabParam === 'recurring' ? 'recurring' : 'jobs'
-  )
+  // Recurring Schedules isn't implemented in V2 (jobs come from calendar sync
+  // + manual entry; V1 used it for 1 job of 467). Force the Jobs tab and hide
+  // the recurring tab so no one hits the missing backend.
+  const [activeTab, setActiveTab] = useState<'jobs' | 'recurring'>('jobs')
+  void tabParam
   const [jobs, setJobs] = useState<Job[]>([])
   const [properties, setProperties] = useState<Property[]>([])
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
@@ -569,36 +571,8 @@ function JobsPageContent() {
       <PageHeader title="Jobs & Payments" />
 
       <div className="p-6 space-y-6">
-        {/* Tab Navigation */}
-        <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
-          <button
-            onClick={() => setActiveTab('jobs')}
-            className={cn(
-              'px-4 py-2 rounded-md text-sm font-medium transition-colors',
-              activeTab === 'jobs'
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-            )}
-          >
-            <Calendar size={16} className="inline mr-2" />
-            Jobs
-          </button>
-          <button
-            onClick={() => setActiveTab('recurring')}
-            className={cn(
-              'px-4 py-2 rounded-md text-sm font-medium transition-colors',
-              activeTab === 'recurring'
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-            )}
-          >
-            <Repeat size={16} className="inline mr-2" />
-            Recurring Schedules
-            {activeSchedules.length > 0 && (
-              <Badge variant="info" className="ml-2">{activeSchedules.length}</Badge>
-            )}
-          </button>
-        </div>
+        {/* Recurring Schedules tab hidden — feature not implemented in V2.
+            Jobs come from calendar sync + manual entry. */}
 
         {activeTab === 'jobs' && (
           <>
