@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
+import { resolveWorkerUserId } from "@/lib/worker-view";
 import { success, error, notFound } from "@/lib/responses";
 import type { FinancialModel } from "crn-shared";
 import { computeWorkerPeriodPay } from "./earnings";
@@ -18,7 +19,8 @@ export async function GET(request: NextRequest) {
   const result = await requireAuth(request);
   if (result.error) return result.error;
 
-  const { user } = result;
+  const scope = await resolveWorkerUserId(request, result.user);
+  if (scope.error) return scope.error;
   const params = request.nextUrl.searchParams;
   const payPeriodId = params.get("payPeriodId");
 
@@ -50,7 +52,7 @@ export async function GET(request: NextRequest) {
 
     const { jobsWorked, totalEarned, jobs } = await computeWorkerPeriodPay(
       period,
-      user.userId,
+      scope.userId,
       financialModel
     );
 

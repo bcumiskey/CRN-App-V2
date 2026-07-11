@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
+import { resolveWorkerUserId } from "@/lib/worker-view";
 import { error, notFound, validationError } from "@/lib/responses";
 import { z } from "zod";
 
@@ -27,7 +28,8 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
   const result = await requireAuth(request);
   if (result.error) return result.error;
 
-  const { user } = result;
+  const scope = await resolveWorkerUserId(request, result.user, { mutating: true });
+  if (scope.error) return scope.error;
   const { id: jobId } = await params;
 
   let body: unknown;
@@ -47,7 +49,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     const job = await prisma.job.findFirst({
       where: {
         id: jobId,
-        assignments: { some: { userId: user.userId } },
+        assignments: { some: { userId: scope.userId } },
       },
       select: { id: true, jobNumber: true, propertyId: true },
     });

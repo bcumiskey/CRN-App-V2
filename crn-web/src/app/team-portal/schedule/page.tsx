@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { cn, formatDate } from "@/lib/utils";
 import { JobCard } from "../JobCard";
-import { portalApi } from "../portal-api";
+import { portalApi, VIEW_AS_EVENT } from "../portal-api";
 import {
   addDaysYMD,
   parseYMD,
@@ -47,6 +47,9 @@ export default function TeamPortalSchedulePage() {
 
   useEffect(() => {
     load();
+    // Admin "viewing as" changed → reload for the newly selected worker.
+    window.addEventListener(VIEW_AS_EVENT, load);
+    return () => window.removeEventListener(VIEW_AS_EVENT, load);
   }, [load]);
 
   const changeWeek = (direction: -1 | 1) => {

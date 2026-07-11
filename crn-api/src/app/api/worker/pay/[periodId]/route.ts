@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
+import { resolveWorkerUserId } from "@/lib/worker-view";
 import { success, error, notFound } from "@/lib/responses";
 import { calculateJob } from "crn-shared";
 import type { FinancialModel } from "crn-shared";
@@ -22,7 +23,9 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
   const result = await requireAuth(request);
   if (result.error) return result.error;
 
-  const { user } = result;
+  const scope = await resolveWorkerUserId(request, result.user);
+  if (scope.error) return scope.error;
+  const workerUserId = scope.userId;
   const { periodId } = await params;
 
   try {
@@ -43,7 +46,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
 
     const { jobsWorked, totalEarned, jobs } = await computeWorkerPeriodPay(
       period,
-      user.userId,
+      workerUserId,
       financialModel
     );
 
@@ -60,7 +63,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
 
     const statements = await prisma.payStatement.findMany({
       where: {
-        userId: user.userId,
+        userId: workerUserId,
         payPeriod: { endDate: { gte: yearStart, lte: yearEnd } },
       },
       select: { grossPay: true, jobsWorked: true },
@@ -74,7 +77,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
           { completedDate: { lte: yearEnd } },
           { completedDate: null, scheduledDate: { lte: yearEnd } },
         ],
-        assignments: { some: { userId: user.userId } },
+        assignments: { some: { userId: workerUserId } },
       },
       include: {
         assignments: {
@@ -106,7 +109,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       });
 
       const wp = calcResult.workerPayments.find(
-        (w) => w.userId === user.userId
+        (w) => w.userId === workerUserId
       );
       ytdEarned += wp?.totalPay ?? 0;
       ytdJobs += 1;

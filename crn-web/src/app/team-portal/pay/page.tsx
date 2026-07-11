@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Wallet, Briefcase, CalendarRange } from "lucide-react";
 import { ApiError } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { portalApi } from "../portal-api";
+import { portalApi, VIEW_AS_EVENT } from "../portal-api";
 
 interface WorkerPayJob {
   jobId: string;
@@ -33,23 +33,29 @@ export default function TeamPortalPayPage() {
   const [loading, setLoading] = useState(true);
   const [noPeriod, setNoPeriod] = useState(false);
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const data = await portalApi.get<WorkerPay>("/worker/pay");
-        setPay(data);
-      } catch (err) {
-        if (err instanceof ApiError && err.status === 404) {
-          setNoPeriod(true);
-        } else {
-          console.error("Failed to load pay data:", err);
-        }
-      } finally {
-        setLoading(false);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setNoPeriod(false);
+    try {
+      const data = await portalApi.get<WorkerPay>("/worker/pay");
+      setPay(data);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) {
+        setNoPeriod(true);
+      } else {
+        console.error("Failed to load pay data:", err);
       }
-    };
-    load();
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    load();
+    // Admin "viewing as" changed → reload for the newly selected worker.
+    window.addEventListener(VIEW_AS_EVENT, load);
+    return () => window.removeEventListener(VIEW_AS_EVENT, load);
+  }, [load]);
 
   if (loading) {
     return <div className="animate-pulse text-gray-500 py-12 text-center">Loading pay...</div>;

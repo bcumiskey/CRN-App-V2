@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
+import { resolveWorkerUserId } from "@/lib/worker-view";
 import { success, error, notFound, validationError } from "@/lib/responses";
 import { z } from "zod";
 
@@ -22,6 +23,8 @@ export async function POST(request: NextRequest) {
   if (result.error) return result.error;
 
   const { user } = result;
+  const scope = await resolveWorkerUserId(request, user, { mutating: true });
+  if (scope.error) return scope.error;
 
   let body: unknown;
   try {
@@ -39,7 +42,7 @@ export async function POST(request: NextRequest) {
     // Scoping: worker must have been assigned to this property
     const hasAssignment = await prisma.jobAssignment.findFirst({
       where: {
-        userId: user.userId,
+        userId: scope.userId,
         job: { propertyId },
       },
       select: { id: true },
@@ -57,7 +60,7 @@ export async function POST(request: NextRequest) {
     const note = await prisma.propertyNote.create({
       data: {
         propertyId,
-        authorId: user.userId,
+        authorId: scope.userId,
         content,
         noteType,
         photoUrl,

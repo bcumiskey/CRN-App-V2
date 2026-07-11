@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
+import { resolveWorkerUserId } from "@/lib/worker-view";
 import { success, error, validationError } from "@/lib/responses";
 import { z } from "zod";
 
@@ -12,11 +13,12 @@ export async function GET(request: NextRequest) {
   const result = await requireAuth(request);
   if (result.error) return result.error;
 
-  const { user } = result;
+  const scope = await resolveWorkerUserId(request, result.user);
+  if (scope.error) return scope.error;
 
   try {
     const profile = await prisma.user.findUnique({
-      where: { id: user.userId },
+      where: { id: scope.userId },
       select: {
         id: true,
         name: true,
@@ -55,7 +57,8 @@ export async function PATCH(request: NextRequest) {
   const result = await requireAuth(request);
   if (result.error) return result.error;
 
-  const { user } = result;
+  const scope = await resolveWorkerUserId(request, result.user, { mutating: true });
+  if (scope.error) return scope.error;
 
   let body: unknown;
   try {
@@ -90,7 +93,7 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const updated = await prisma.user.update({
-      where: { id: user.userId },
+      where: { id: scope.userId },
       data,
       select: {
         id: true,

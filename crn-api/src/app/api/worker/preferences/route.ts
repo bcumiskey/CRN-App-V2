@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
+import { resolveWorkerUserId } from "@/lib/worker-view";
 import { success, error, validationError } from "@/lib/responses";
 import { z } from "zod";
 
@@ -23,7 +24,9 @@ export async function GET(request: NextRequest) {
   const result = await requireAuth(request);
   if (result.error) return result.error;
 
-  const userId = result.user.userId;
+  const scope = await resolveWorkerUserId(request, result.user);
+  if (scope.error) return scope.error;
+  const userId = scope.userId;
 
   try {
     let prefs = await prisma.userPreference.findUnique({
@@ -32,6 +35,18 @@ export async function GET(request: NextRequest) {
 
     // Auto-create with worker-specific defaults if none exists
     if (!prefs) {
+      // In admin view-as, return ephemeral defaults without persisting — the
+      // preview must not create a preferences row for the previewed worker.
+      if (scope.viewingAs) {
+        return success({
+          userId,
+          tabBarSlots: WORKER_DEFAULT_TAB_BAR,
+          centerAction: "start_job",
+          defaultJobsView: "list",
+          defaultCalendarView: "week",
+          jobCompletionAction: "next",
+        });
+      }
       prefs = await prisma.userPreference.create({
         data: {
           userId,
@@ -79,7 +94,9 @@ export async function PATCH(request: NextRequest) {
   const result = await requireAuth(request);
   if (result.error) return result.error;
 
-  const userId = result.user.userId;
+  const scope = await resolveWorkerUserId(request, result.user, { mutating: true });
+  if (scope.error) return scope.error;
+  const userId = scope.userId;
 
   let body: unknown;
   try {
