@@ -195,7 +195,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
           ...(shouldLock || statusLock ? { syncLocked: true } : {}),
         },
         include: {
-          property: { select: { id: true, name: true, code: true } },
+          property: { select: { id: true, name: true, code: true, color: true } },
           assignments: {
             include: {
               user: { select: { id: true, name: true } },

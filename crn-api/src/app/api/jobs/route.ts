@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
       prisma.job.findMany({
         where,
         include: {
-          property: { select: { id: true, name: true, code: true } },
+          property: { select: { id: true, name: true, code: true, color: true } },
           assignments: {
             include: {
               user: { select: { id: true, name: true, avatarUrl: true } },
