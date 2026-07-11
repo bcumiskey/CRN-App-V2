@@ -330,7 +330,11 @@ export async function v1Fetch(
     return handleDashboardFetch();
   }
 
-  const fullUrl = `${API_BASE}${pathPart}${queryString ? "?" + queryString : ""}`;
+  // V1 exposed alerts at /api/alerts; V2 generates them under dashboard.
+  const routedPath =
+    pathPart === "/api/alerts" ? "/api/dashboard/alerts" : pathPart;
+
+  const fullUrl = `${API_BASE}${routedPath}${queryString ? "?" + queryString : ""}`;
 
   // Map request body for POST/PATCH/PUT
   let body = options?.body;

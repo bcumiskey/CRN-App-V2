@@ -93,6 +93,7 @@ interface Job {
   clientPaid: boolean
   teamPaid: boolean
   teamPaidAt: string | null
+  isBtoB: boolean
   source: string
   property: { id: string; name: string; color: string | null }
   assignments: JobAssignment[]
@@ -771,7 +772,18 @@ function JobsPageContent() {
                             {/* Property Name & Rate */}
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center justify-between gap-2">
-                                <h3 className="font-semibold text-gray-900 truncate">{job.property.name}</h3>
+                                <h3 className="font-semibold text-gray-900 truncate flex items-center gap-1.5">
+                                  {job.isBtoB && (
+                                    <span
+                                      className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-orange-500 text-white text-[10px] font-bold uppercase tracking-wide flex-shrink-0"
+                                      title="Back-to-back — same-day turnaround, tight timing"
+                                    >
+                                      <Repeat size={10} />
+                                      B2B
+                                    </span>
+                                  )}
+                                  <span className="truncate">{job.property.name}</span>
+                                </h3>
                                 <span className="font-semibold text-gray-900 flex-shrink-0">{formatCurrency(job.rate)}</span>
                               </div>
                               <div className="flex items-center gap-2 mt-0.5">
@@ -1219,6 +1231,7 @@ function JobModal({ isOpen, onClose, onSave, properties, teamMembers, editingJob
     expensePercent: '12',
     teamMemberIds: [] as string[],
     completed: false,
+    isBtoB: false,
   })
   const [isSaving, setIsSaving] = useState(false)
 
@@ -1233,6 +1246,7 @@ function JobModal({ isOpen, onClose, onSave, properties, teamMembers, editingJob
           expensePercent: editingJob.expensePercent?.toString() || '12',
           teamMemberIds: editingJob.assignments.map(a => a.teamMember.id),
           completed: editingJob.completed,
+          isBtoB: editingJob.isBtoB ?? false,
         })
       } else {
         setFormData({
@@ -1243,6 +1257,7 @@ function JobModal({ isOpen, onClose, onSave, properties, teamMembers, editingJob
           expensePercent: '12',
           teamMemberIds: [],
           completed: false,
+          isBtoB: false,
         })
       }
     }
@@ -1358,6 +1373,24 @@ function JobModal({ isOpen, onClose, onSave, properties, teamMembers, editingJob
             )}
           </div>
         </div>
+
+        <label className="flex items-center gap-2 cursor-pointer">
+          <button
+            type="button"
+            onClick={() => setFormData({ ...formData, isBtoB: !formData.isBtoB })}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+              formData.isBtoB ? 'bg-orange-500' : 'bg-gray-200'
+            }`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                formData.isBtoB ? 'translate-x-6' : 'translate-x-1'
+              }`}
+            />
+          </button>
+          <span className="text-sm font-medium text-gray-700">Back-to-back (B2B)</span>
+          <span className="text-xs text-gray-400">— same-day turnaround, tight timing</span>
+        </label>
 
         {editingJob && (
           <label className="flex items-center gap-2 cursor-pointer">

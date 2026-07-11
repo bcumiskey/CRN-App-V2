@@ -104,6 +104,9 @@ const createJobSchema = z.object({
   isBtoB: z.boolean().optional(),
   notes: z.string().optional(),
   assignments: z.array(assignmentSchema).optional(),
+  // The quick-add modal (via v1-compat) sends a bare crew list instead of
+  // {userId, share} objects. Accept it as an alias; shares default per user.
+  userIds: z.array(z.string()).optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -133,6 +136,20 @@ export async function POST(request: NextRequest) {
     // Snapshot houseCutPercent from property if not provided
     const houseCutPercent = data.houseCutPercent ?? property.houseCutPercent;
 
+    // Resolve crew: explicit assignments win; otherwise build them from a bare
+    // userIds list at each user's default share.
+    let crew = data.assignments;
+    if (!crew && data.userIds && data.userIds.length > 0) {
+      const users = await prisma.user.findMany({
+        where: { id: { in: data.userIds } },
+        select: { id: true, defaultShare: true },
+      });
+      const shareOf = new Map(users.map((u) => [u.id, u.defaultShare ?? 1.0]));
+      crew = data.userIds
+        .filter((uid) => shareOf.has(uid))
+        .map((uid) => ({ userId: uid, share: shareOf.get(uid)! }));
+    }
+
     const jobNumber = await generateJobNumber();
 
     const job = await prisma.job.create({
@@ -147,9 +164,9 @@ export async function POST(request: NextRequest) {
         jobTypeLabel: data.jobTypeLabel,
         isBtoB: data.isBtoB,
         notes: data.notes,
-        assignments: data.assignments
+        assignments: crew
           ? {
-              create: data.assignments.map((a) => ({
+              create: crew.map((a) => ({
                 userId: a.userId,
                 share: a.share,
               })),
