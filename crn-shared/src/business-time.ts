@@ -24,6 +24,10 @@
 
 const DEFAULT_TIMEZONE = "America/New_York";
 
+// crn-shared is consumed by both the server and the browser and deliberately
+// carries no @types/node — declaring the one global we touch keeps it that way.
+declare const process: { env?: Record<string, string | undefined> } | undefined;
+
 export function businessTimezone(): string {
   // Works in both runtimes: the API reads the server env, the browser gets the
   // value inlined at build time via NEXT_PUBLIC_.
