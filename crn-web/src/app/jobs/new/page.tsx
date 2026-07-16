@@ -1,5 +1,6 @@
 "use client";
 
+import { todayYMD } from "crn-shared";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
@@ -40,7 +41,7 @@ export default function NewJobPage() {
 
   // Form state
   const [propertyId, setPropertyId] = useState("");
-  const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(() => todayYMD());
   const [time, setTime] = useState("");
   const [jobType, setJobType] = useState("Standard Clean");
   const [fee, setFee] = useState("");

@@ -1,5 +1,6 @@
 "use client";
 
+import { todayYMD } from "crn-shared";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { Car, Plus } from "lucide-react";
@@ -33,7 +34,7 @@ export default function MileagePage() {
   const [showModal, setShowModal] = useState(false);
 
   // Form state
-  const [formDate, setFormDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [formDate, setFormDate] = useState(() => todayYMD());
   const [formFrom, setFormFrom] = useState("");
   const [formTo, setFormTo] = useState("");
   const [formMiles, setFormMiles] = useState("");

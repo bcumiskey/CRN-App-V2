@@ -30,3 +30,15 @@ export {
   DateStringSchema,
   TimeStringSchema,
 } from "./validators";
+
+// Business-local dates — the ONE definition of "today".
+// Lived only inside crn-api until a UTC-derived date in crn-web put jobs on the
+// wrong day after 8pm Eastern. Shared so both apps cannot disagree again.
+export {
+  businessTimezone,
+  businessYMD,
+  todayYMD,
+  addDaysYMD,
+  monthRangeYMD,
+  currentMonthYM,
+} from "./business-time";

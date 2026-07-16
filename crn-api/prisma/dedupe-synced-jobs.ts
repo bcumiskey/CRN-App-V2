@@ -1,5 +1,13 @@
 /**
- * Dedupe synced jobs that share (source, externalId).
+ * Dedupe synced jobs that share an externalId.
+ *
+ * 2026-07-15 — KEYED ON externalId ALONE, NOT (source, externalId).
+ * V1 had this right: `externalId String? @unique` — one calendar event, one job,
+ * full stop. The later composite (source, externalId) is strictly WEAKER: it
+ * permits the same event to exist once per source, which both sync paths produce
+ * in practice (an import writes under one source; a later sync re-creates the
+ * same event under another). The composite key also made THIS SCRIPT blind to the
+ * very duplicates it exists to find, because it grouped by the same broken key.
  *
  * These duplicates were created by pre-v2.2.1 calendar-sync bugs
  * (concurrent cron + manual sync runs, fallback dedup misses). This script
@@ -13,7 +21,7 @@
  *   npx tsx prisma/dedupe-synced-jobs.ts --apply    # cancels safe duplicates
  *
  * Behavior:
- *   - Groups non-CANCELLED jobs by (source, externalId), externalId != null.
+ *   - Groups non-CANCELLED jobs by externalId (!= null), ACROSS sources.
  *   - In each group, KEEPS one job: the oldest job that has activity
  *     (assignments / charges / invoice line items), else the oldest overall.
  *   - Duplicates with NO activity are CANCELLED (status -> 'CANCELLED',
@@ -56,7 +64,7 @@ async function main() {
   );
 
   const groups = await prisma.job.groupBy({
-    by: ["source", "externalId"],
+    by: ["externalId"],
     where: {
       externalId: { not: null },
       status: { not: "CANCELLED" },
@@ -67,7 +75,7 @@ async function main() {
 
   if (groups.length === 0) {
     console.log(
-      "No duplicate (source, externalId) groups found. Safe to apply migration 20260711000001."
+      "No duplicate externalId groups found. Safe to apply the unique index."
     );
     return;
   }
@@ -80,7 +88,6 @@ async function main() {
   for (const group of groups) {
     const jobs = (await prisma.job.findMany({
       where: {
-        source: group.source,
         externalId: group.externalId,
         status: { not: "CANCELLED" },
       },
@@ -106,7 +113,7 @@ async function main() {
     const keeper = jobs.find(hasActivity) ?? jobs[0];
 
     console.log(
-      `Group (source=${group.source}, externalId=${group.externalId}) — ${jobs.length} jobs:`
+      `Group (externalId=${group.externalId}) — ${jobs.length} jobs across ${new Set(jobs.map((j) => j.source)).size} source(s):`
     );
     console.log(
       `  KEEP    ${keeper.jobNumber} [${keeper.status}] ${keeper.scheduledDate}` +
